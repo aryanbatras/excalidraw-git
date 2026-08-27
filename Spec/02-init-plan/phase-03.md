@@ -48,6 +48,31 @@ for (const [path, isDirty] of Object.entries(state.dirty)) {
 
 `commitFilesToGitHub` is a new helper in AppShell that wraps the `/api/commit` fetch + updates cache + clears dirty + updates headSha.
 
+## CRITICAL — Background commit payload must match `/api/commit`
+The current global auto-save (AppShell) sends:
+```ts
+{ path, content: btoa(JSON.stringify(cached.scene)), expectedBaseSha: cached.sha }
+```
+but `POST/PUT /api/commit` expects `{ files: [{ path, content }], message }`.
+Result: **every background auto-save for a non-active file returns 400 "missing params"** — the feature silently never works. Fix in `commitFilesToGitHub`:
+
+```ts
+POST /api/commit?owner&repo&branch
+body: {
+  files: [{ path, content: sceneToBase64(cached.scene) }],
+  message: `auto-save: ${path}`,
+}
+```
+
+Two additional notes:
+- Use `sceneToBase64()` (from `lib/excalidraw-serialize.ts`) **not** `btoa(JSON.stringify(...))`. `btoa` throws/fails on non-Latin1 characters (emoji, non-English labels); `sceneToBase64` runs a UTF-8 encode first and is already the standard used by the editor save flow.
+- `expectedBaseSha` is not part of this endpoint's contract; the server does its own conflict retry inside `commitFiles`. Drop it from the body.
+
+## CRITICAL — Interval must re-bind when settings change
+The auto-save `setInterval` is created with the auto-save interval value captured at mount.
+- The effect's dependency array must include `autoSaveEnabled` and `autoSaveIntervalSeconds` (and anything it closes over) so changing the slider/interval or toggling auto-save off/on clears and re-creates the timer immediately.
+- Guard the tick with an `autoSaveEnabled` check; when disabled no commits happen.
+
 ## Files to Modify
 - `lib/store.ts` — add `autoSaveEnabled`, `autoSaveIntervalSeconds` to persisted state
 - `components/AppShell.tsx` — add global auto-save interval, remove per-EditorPane interval
@@ -60,7 +85,7 @@ for (const [path, isDirty] of Object.entries(state.dirty)) {
 - [ ] Auto-save toggle and interval slider work
 - [ ] Settings persist across sessions (localStorage)
 - [ ] Changing interval takes effect immediately (clear old interval, set new)
-- [ ] Auto-save commits ALL dirty files (not just current) on each tick
+- [ ] Auto-save commits ALL dirty files (not just current) on each tick via the correct `/api/commit` payload (`files[]` + `sceneToBase64`, not `btoa`)
 - [ ] File A auto-saves in background after switching to file B
 - [ ] Per-EditorPane 15-min interval is removed (replaced by global)
 - [ ] Minimum interval is 30 seconds (enforced in UI + code)

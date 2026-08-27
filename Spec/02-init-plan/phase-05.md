@@ -39,10 +39,36 @@ export const LIBRARIES: LibraryMeta[] = [ ... ];
 ## Loading Flow
 1. On editor mount (`ExcalidrawWrapper.tsx`), read enabled library IDs from zustand store
 2. For each enabled library:
-   - `fetch(lib.file)` → parse JSON → extract `.libraryItems`
+   - `fetch(lib.file)` → read as **Blob** → `loadLibraryFromBlob(blob, "published")` (official util from `@excalidraw/excalidraw`, see below) → get normalized `LibraryItem[]`
    - `excalidrawAPI.updateLibrary({ libraryItems, merge: true, prompt: false })`
-3. Track loaded library IDs in a `useRef<Set<string>>` to avoid double-loading
+3. Track loaded library IDs in a `useRef<Set<string>>` to avoid double-loading within one mount
 4. Loading is async and non-blocking — editor renders immediately, libraries appear in sidebar as they load
+
+## CRITICAL — Use `loadLibraryFromBlob`, don't hand-roll v1/v2 parsing
+`.excalidrawlib` files come in **two incompatible shapes** (verified against downloaded files):
+- **v1** (`version: 1`): `{ type, version: 1, source?, library: [ [elements...], [elements...], ... ] }` — each item is a bare element array (`software-logos`, `uml-er` are v1).
+- **v2** (`version: 2`): `{ type, version: 2, source?, libraryItems: [{ status, elements, id, created, name }] }` (`aws-architecture` is v2).
+
+The manual normalization currently in `ExcalidrawWrapper.tsx` translates v1 → `{status, id, name, elements}` but **omits `created`** — which `LibraryItem` requires (epoch ms). Hand-rolled parsing also skips the full element normalization Excalidraw applies on import.
+
+**Fix:** use the package's own decoder:
+```ts
+import { loadLibraryFromBlob } from "@excalidraw/excalidraw";
+
+const blob = await (await fetch(meta.file)).blob();
+const items = await loadLibraryFromBlob(blob, "published");
+await api.updateLibrary({ libraryItems: items, merge: true, prompt: false });
+```
+`loadLibraryFromBlob(blob, defaultStatus?) => Promise<LibraryItem[]>` handles both versions (wrapping v1 arrays, adding `created`, `status`, `id`, `name`, and normalizing elements). Signature verified in `dist/types/excalidraw/data/blob.d.ts`. Files must be fetched as `blob()` (not `.json()`) since it takes a `Blob`.
+
+## CRITICAL — `ExcalidrawImperativeAPI`, not a custom `Api` type
+- The wrapper currently types its ref with a hand-rolled `Api` subset. Type it as `ExcalidrawImperativeAPI | null`, imported as a type from `@excalidraw/excalidraw`.
+- Also expose the same ref to `AppShell` via the `onApiReady?: (api: ExcalidrawImperativeAPI | null) => void` prop required by **phase-02** (append must call `updateScene` on the live canvas). `excalidrawAPI={() => ...}` is a callback prop fired once ready (and with `null` on unmount).
+
+## CRITICAL — Remount resets `loadedLibs` and re-loads libraries
+`ExcalidrawStage` is mounted with `key={path}`, so switching files remounts the wrapper and `loadedLibs.current` starts empty again → libraries are re-fetched + re-loaded on every file open. That's acceptable (fast, idempotent via `merge:true`), but:
+- Guard against loading on the very first mount racing `updateLibrary` readiness — the `excalidrawAPI` callback is the correct trigger; do NOT fire fetches from a `useEffect` on mount before the API exists.
+- Optionally store loaded IDs in the zustand store (`loadedLibraries: string[]`) instead of a ref so the set survives remounts and re-fetch is skipped on subsequent file opens.
 
 ## Unloading Flow
 When user disables a library in settings:
@@ -78,33 +104,44 @@ Libraries
 ## ExcalidrawWrapper Changes
 ```ts
 // In ExcalidrawWrapper.tsx
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw";
+import { loadLibraryFromBlob } from "@excalidraw/excalidraw";
+
 const enabledLibraries = useStore((s) => s.enabledLibraries);
 const loadedLibs = useRef(new Set<string>());
 
-const handleAPI = useCallback(async (api: ExcalidrawAPI) => {
+const handleAPI = useCallback(async (api: ExcalidrawImperativeAPI | null) => {
+  if (!api) {
+    onApiReady?.(null);
+    excalidrawAPIRef.current = null;
+    return;
+  }
   excalidrawAPIRef.current = api;
+  onApiReady?.(api);
   // ... existing font change ...
-  
-  // Load enabled libraries
+
+  // Load enabled libraries (fires once when API becomes ready)
   for (const libId of enabledLibraries) {
     if (loadedLibs.current.has(libId)) continue;
-    const meta = LIBRARIES.find(l => l.id === libId);
+    const meta = LIBRARIES.find((l) => l.id === libId);
     if (!meta) continue;
     try {
       const res = await fetch(meta.file);
-      const lib = await res.json();
-      await api.updateLibrary({
-        libraryItems: lib.libraryItems,
-        merge: true,
-        prompt: false,
-      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const items = await loadLibraryFromBlob(blob, "published");
+      await api.updateLibrary({ libraryItems: items, merge: true, prompt: false });
       loadedLibs.current.add(libId);
     } catch (err) {
       console.error(`Failed to load library ${libId}:`, err);
+      // surface a subtle status row on the settings panel, do not break the editor
     }
   }
 }, [enabledLibraries]);
 ```
+Note: `enabledLibraries` in the deps re-fires `handleAPI` when the user toggles libraries
+mid-session — guard with `loadedLibs.current` and skip already-loaded IDs. Type the prop as
+`onApiReady?: (api: ExcalidrawImperativeAPI | null) => void`.
 
 ## Store Additions
 ```ts
@@ -135,9 +172,11 @@ curl -o public/libraries/aws-architecture.excalidrawlib \
 ```
 
 ## Acceptance Criteria
-- [ ] 8 `.excalidrawlib` files in `public/libraries/`
+- [ ] 6 `.excalidrawlib` files in `public/libraries/` (gcp-services, azure-services, database-icons returned 404 from libraries.excalidraw.com — dropped)
 - [ ] Library registry with metadata (name, description, icon, item count)
 - [ ] Settings panel shows library checkboxes
+- [ ] Libraries load via `loadLibraryFromBlob` (v1 + v2 files both load, `created`/`status` populated)
+- [ ] `ExcalidrawImperativeAPI` type used for the editor ref; same ref surfaced to AppShell via `onApiReady`
 - [ ] Enabling a library loads it into the editor sidebar on next mount
 - [ ] Libraries load lazily (non-blocking, async fetch)
 - [ ] Enabled libraries persist across sessions (localStorage)

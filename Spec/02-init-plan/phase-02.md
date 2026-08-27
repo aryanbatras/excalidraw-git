@@ -53,15 +53,48 @@ function appendTemplateToScene(
   currentElements: ExcalidrawElement[],
   templateElements: ExcalidrawElement[],
 ): ExcalidrawElement[] {
-  // 1. Calculate bounding box of current elements
-  // 2. Find bounding box of template elements
-  // 3. Offset all template elements: x += (currentRight + 50 - templateLeft), y unchanged
-  // 4. Generate new unique IDs for template elements (to avoid ID collisions)
-  // 5. Return [...currentElements, ...offsetTemplateElements]
+  // 1. Normalize template elements via restoreElements() (they come from raw files —
+  //    may be missing fields Excalidraw expects at runtime).
+  // 2. Calculate bounding box of current elements (+ their x/y/width/height).
+  // 3. Find bounding box of template elements.
+  // 4. Offset ALL template elements: x += (currentRight + 60 - templateMinX),
+  //    y += (currentBottom + 80 - templateMinY). Offset both axes so templates placed
+  //    diagonally below-right never overlap existing work.
+  // 5. Generate new unique IDs for template elements (avoid collisions) and remap
+  //    groupIds / containerId / boundElements / frameId to the new IDs.
+  // 6. Return [...currentElements, ...offsetTemplateElements].
 }
 ```
 
-Use `excalidrawAPI.updateScene({ elements: newElements })` to apply.
+## CRITICAL — Appending must update the LIVE canvas
+The Excalidraw stage is mounted with `key={path}` and only renders `initialData` at mount time.
+Updating React state (`current.scene`) does NOT re-render the canvas. The append must flow
+through the imperative API:
+
+1. `AppShell` must own a ref to the live API. Thread it down:
+   - AppShell keeps `const excalidrawRef = useRef<ExcalidrawImperativeAPI | null>(null)`.
+   - A new prop `onApiReady?: (api: ExcalidrawImperativeAPI | null) => void` is passed to
+     `EditorPane` → `ExcalidrawStage` → `Excalidraw`'s `excalidrawAPI` prop
+     (`excalidrawAPI={(api) => onApiReady?.(api)}` — the callback fires once on ready and
+     with `null` on unmount).
+   - `ExcalidrawImperativeAPI` is imported as a type from `@excalidraw/excalidraw`
+     (exported alongside the component in the package entry; see phase-05 notes).
+2. After `handleTemplateSelect` computes the merged elements:
+   - `setCurrent({ ...current, scene: mergedScene, version: current.version + 1 })` to keep
+     React state + `cacheScene` consistent, AND
+   - `excalidrawRef.current?.updateScene({ elements: mergedElements })` to push them into
+     the live canvas, AND
+   - `markDirty(current.path, true)` so the dirty indicator + save bar reflect unsaved changes.
+   - Safeguard: if `excalidrawRef.current` is null (stage not yet mounted), fall back to
+     bumping `version` and rely on the `key={path}` remount path showing new initialData.
+
+## "New file from template" — DO NOT open the New-file modal
+`handleTemplateSelect(..., "new")` currently calls `setNewState(...)` (opens the modal) and
+then immediately creates the file, causing a visible modal flash. Instead: bypass the modal —
+create the `.excalidraw` file directly with the template scene (reusing the create flow, but
+come up with a name from `template.name`), then switch to it. The choice modal is only shown
+when a file is ALREADY open; when no file is open, "new file" is the only option and runs
+immediately.
 
 ## Template Source Files
 - Curate 15-20 high-quality templates from community repos:
@@ -88,7 +121,7 @@ Use `excalidrawAPI.updateScene({ elements: newElements })` to apply.
 - [ ] Category filter tabs work
 - [ ] Search filters by name + tags
 - [ ] Clicking a template shows append/new-file choice
-- [ ] "Append" adds elements to current scene at correct offset, no ID collisions
-- [ ] "New file" creates a new file with the template content
+- [ ] "Append" adds elements to current scene at live canvas via `updateScene`, both-axis offset, no ID collisions, marks file dirty
+- [ ] "New file" creates a new file with the template content WITHOUT flashing the new-file modal
 - [ ] Works when no file is open (only "new file" option available)
 - [ ] At least 15 templates across 5+ categories

@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   Power,
   ClockCounterClockwise,
+  Gear,
 } from "@phosphor-icons/react";
 import type { RepoRef } from "@/lib/types";
 import { useStore } from "@/lib/store";
@@ -40,6 +41,7 @@ export function TopBar({
   onSave,
   onNew,
   onTemplates,
+  onSettings,
   onChangeRepo,
   onRestore,
 }: {
@@ -48,6 +50,7 @@ export function TopBar({
   onSave: () => void;
   onNew: (id: TemplateId) => void;
   onTemplates: () => void;
+  onSettings: () => void;
   onChangeRepo: () => void;
   onRestore: (sha: string) => void;
 }) {
@@ -200,6 +203,10 @@ export function TopBar({
       <Button variant="primary" onClick={onSave} disabled={!selectedPath}>
         <FloppyDisk size={15} /> Save
       </Button>
+
+      <IconButton title="Settings" onClick={onSettings}>
+        <Gear size={16} />
+      </IconButton>
 
       {/* account / sign out */}
       <div className="relative">

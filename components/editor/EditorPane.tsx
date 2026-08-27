@@ -112,14 +112,6 @@ export function EditorPane({
     return () => window.removeEventListener("keydown", onKey);
   }, [saveCurrent]);
 
-  // auto-save every 15 minutes
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (useStore.getState().dirty[path]) void saveCurrent();
-    }, 15 * 60 * 1000);
-    return () => window.clearInterval(id);
-  }, [path, saveCurrent]);
-
   // crash-safe flush on tab hide/close
   useEffect(() => {
     const onHide = () => {

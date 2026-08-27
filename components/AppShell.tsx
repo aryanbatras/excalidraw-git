@@ -15,6 +15,7 @@ import { sceneToBase64 } from "@/lib/excalidraw-serialize";
 import { loadScene, saveScene, clearScene } from "@/lib/idb";
 import { TemplateGallery } from "@/components/templates/TemplateGallery";
 import { appendTemplateToScene } from "@/components/templates/appendTemplate";
+import { SettingsPanel } from "@/components/settings/SettingsPanel";
 
 // Editor must never load on the server (Excalidraw touches window at import).
 const EditorPane = dynamic(
@@ -54,6 +55,42 @@ export function AppShell() {
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Global auto-save: commits all dirty files at the configured interval
+  const autoSaveEnabled = useStore((s) => s.autoSaveEnabled);
+  const autoSaveInterval = useStore((s) => s.autoSaveIntervalSeconds);
+  useEffect(() => {
+    if (!autoSaveEnabled || !repo) return;
+    const id = setInterval(async () => {
+      const state = useStore.getState();
+      for (const [path, isDirty] of Object.entries(state.dirty)) {
+        if (!isDirty) continue;
+        const cached = state.sceneCache[path];
+        if (!cached) continue;
+        if (path === current?.path) {
+          saveRef.current?.();
+          continue;
+        }
+        // Background commit for non-active files
+        try {
+          const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
+          const res = await fetch(`/api/commit?${qs}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path, content: btoa(JSON.stringify(cached.scene)), expectedBaseSha: cached.sha }),
+          });
+          if (res.ok) {
+            const { commitSha } = await res.json() as { commitSha: string };
+            state.markDirty(path, false);
+            state.cacheScene(path, cached.scene, commitSha);
+            state.setHead(`${repo.owner}/${repo.repo}`, commitSha);
+          }
+        } catch { /* best-effort */ }
+      }
+    }, autoSaveInterval * 1000);
+    return () => clearInterval(id);
+  }, [autoSaveEnabled, autoSaveInterval, repo, current?.path]);
 
   useEffect(() => {
     if (session?.user?.login) setLogin(session.user.login);
@@ -295,6 +332,7 @@ export function AppShell() {
           setNewState({ dir, template: id });
         }}
         onTemplates={() => setGalleryOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
         onChangeRepo={() => clearRepo()}
         onRestore={restoreVersion}
       />
@@ -432,6 +470,11 @@ export function AppShell() {
           onClose={() => setGalleryOpen(false)}
           onSelect={handleTemplateSelect}
         />
+      )}
+
+      {/* Settings */}
+      {settingsOpen && (
+        <SettingsPanel onClose={() => setSettingsOpen(false)} />
       )}
     </div>
   );

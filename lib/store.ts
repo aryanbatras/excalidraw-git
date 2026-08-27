@@ -24,6 +24,11 @@ type State = {
   // in-memory scene cache (path -> {scene, sha})
   sceneCache: Record<string, { scene: Scene; sha: string }>;
 
+  // settings (persisted)
+  autoSaveEnabled: boolean;
+  autoSaveIntervalSeconds: number;
+  enabledLibraries: string[];
+
   setRepo: (r: RepoRef) => void;
   clearRepo: () => void;
   setDir: (path: string, entries: TreeEntry[]) => void;
@@ -36,6 +41,9 @@ type State = {
   cacheScene: (path: string, scene: Scene, sha: string) => void;
   getCached: (path: string) => { scene: Scene; sha: string } | undefined;
   invalidateDir: (path: string) => void;
+  setAutoSave: (enabled: boolean) => void;
+  setAutoSaveInterval: (seconds: number) => void;
+  toggleLibrary: (id: string) => void;
 };
 
 export const useStore = create<State>()(
@@ -51,6 +59,9 @@ export const useStore = create<State>()(
       status: "idle",
       statusMsg: null,
       sceneCache: {},
+      autoSaveEnabled: true,
+      autoSaveIntervalSeconds: 60,
+      enabledLibraries: ["software-logos", "aws-architecture", "devops-icons"],
 
       setRepo: (r) => set({ repo: r, dirCache: {}, loadedDirs: {}, selectedPath: null, dirty: {} }),
       clearRepo: () => set({ repo: null, dirCache: {}, loadedDirs: {}, selectedPath: null, dirty: {} }),
@@ -73,13 +84,27 @@ export const useStore = create<State>()(
           delete loadedDirs[path];
           return { dirCache, loadedDirs };
         }),
+      setAutoSave: (enabled) => set({ autoSaveEnabled: enabled }),
+      setAutoSaveInterval: (seconds) => set({ autoSaveIntervalSeconds: Math.max(30, seconds) }),
+      toggleLibrary: (id) =>
+        set((s) => ({
+          enabledLibraries: s.enabledLibraries.includes(id)
+            ? s.enabledLibraries.filter((x) => x !== id)
+            : [...s.enabledLibraries, id],
+        })),
     }),
     {
       name: "exgit-store",
       storage: createJSONStorage(() =>
         typeof window !== "undefined" ? window.localStorage : noopStorage,
       ),
-      partialize: (s) => ({ repo: s.repo, login: s.login }),
+      partialize: (s) => ({
+        repo: s.repo,
+        login: s.login,
+        autoSaveEnabled: s.autoSaveEnabled,
+        autoSaveIntervalSeconds: s.autoSaveIntervalSeconds,
+        enabledLibraries: s.enabledLibraries,
+      }),
     },
   ),
 );

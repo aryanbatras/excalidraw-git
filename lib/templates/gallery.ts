@@ -18,15 +18,15 @@ export type GalleryTemplate = {
   file: string;
 };
 
-export const CATEGORY_META: Record<TemplateCategory, { label: string; icon: string }> = {
-  "system-design": { label: "System Design", icon: "🏗️" },
-  "cloud-arch": { label: "Cloud Architecture", icon: "☁️" },
-  "uml-er": { label: "UML & ER", icon: "📊" },
-  wireframes: { label: "Wireframes", icon: "📱" },
-  "mind-maps": { label: "Mind Maps", icon: "🧠" },
-  workflows: { label: "Workflows", icon: "⚙️" },
-  algorithms: { label: "Algorithms", icon: "🔗" },
-  network: { label: "Network", icon: "🌐" },
+export const CATEGORY_META: Record<TemplateCategory, { label: string }> = {
+  "system-design": { label: "System Design" },
+  "cloud-arch": { label: "Cloud Architecture" },
+  "uml-er": { label: "UML & ER" },
+  wireframes: { label: "Wireframes" },
+  "mind-maps": { label: "Mind Maps" },
+  workflows: { label: "Workflows" },
+  algorithms: { label: "Algorithms" },
+  network: { label: "Network" },
 };
 
 const RAW_TEMPLATES = [
@@ -34,10 +34,42 @@ const RAW_TEMPLATES = [
   {
     id: "system-design/load-balancer",
     name: "Load Balancer",
-    description: "Client → Load Balancer → application servers flow",
+    description: "Client → LB → services with health checks and the layer model",
     category: "system-design",
     tags: ["cloud", "networking", "scalability"],
     file: "/templates/system-design/load-balancer.excalidraw",
+  },
+  {
+    id: "system-design/url-shortener",
+    name: "URL Shortener",
+    description: "TinyURL-style: hashing, base62, collision handling, redirect",
+    category: "system-design",
+    tags: ["url-shortener", "hashing", "api"],
+    file: "/templates/system-design/url-shortener.excalidraw",
+  },
+  {
+    id: "system-design/web-crawler",
+    name: "Web Crawler",
+    description: "Seed URLs, frontier, politeness, deduplication, content store",
+    category: "system-design",
+    tags: ["crawling", "search", "scalability"],
+    file: "/templates/system-design/web-crawler.excalidraw",
+  },
+  {
+    id: "system-design/chat-messaging",
+    name: "Chat Messaging",
+    description: "1:1 and group chat: gateways, presence, message flow, storage",
+    category: "system-design",
+    tags: ["chat", "websockets", "realtime"],
+    file: "/templates/system-design/chat-messaging.excalidraw",
+  },
+  {
+    id: "system-design/redis-cache",
+    name: "Redis Cache",
+    description: "Data structures, eviction, persistence and caching topologies",
+    category: "system-design",
+    tags: ["cache", "redis", "storage"],
+    file: "/templates/system-design/redis-cache.excalidraw",
   },
   {
     id: "system-design/rate-limiter",
@@ -118,9 +150,9 @@ const RAW_TEMPLATES = [
   {
     id: "uml-er/database-strategies",
     name: "Database Strategies",
-    description: "SQL vs NoSQL vs NewSQL comparison diagram",
+    description: "Centralized, replication, partition and consistency strategies",
     category: "uml-er",
-    tags: ["database", "architecture", "comparison"],
+    tags: ["database", "sharding", "replication"],
     file: "/templates/uml-er/database-strategies.excalidraw",
   },
   {
@@ -170,17 +202,17 @@ const RAW_TEMPLATES = [
   {
     id: "mind-maps/brainstorm",
     name: "Brainstorm",
-    description: "Central idea with branching topics and sub-ideas",
+    description: "Radial map: requirements to wrap-up for a design from scratch",
     category: "mind-maps",
-    tags: ["ideation", "creativity", "brainstorm"],
+    tags: ["ideation", "design", "structure"],
     file: "/templates/mind-maps/brainstorm.excalidraw",
   },
   {
     id: "mind-maps/project-planning",
-    name: "Project Planning",
-    description: "Scope, schedule, resources, and risk breakdown",
+    name: "Interview Prep Plan",
+    description: "Radial study map: algorithms, system design, behavioral, mock mocks",
     category: "mind-maps",
-    tags: ["planning", "project", "management"],
+    tags: ["interview", "plan", "study"],
     file: "/templates/mind-maps/project-planning.excalidraw",
   },
 
@@ -208,6 +240,30 @@ const RAW_TEMPLATES = [
     category: "workflows",
     tags: ["data", "etl", "pipeline"],
     file: "/templates/workflows/data-pipeline.excalidraw",
+  },
+  {
+    id: "workflows/job-scheduler",
+    name: "Job Scheduler",
+    description: "Airflow/Temporal-style: DAGs, workers, queues, retries, monitoring",
+    category: "workflows",
+    tags: ["airflow", "temporal", "scheduling"],
+    file: "/templates/workflows/job-scheduler.excalidraw",
+  },
+  {
+    id: "workflows/ad-click-aggregator",
+    name: "Ad Click Aggregator",
+    description: "Click ingestion, aggregation windows, storage and querying",
+    category: "workflows",
+    tags: ["analytics", "streaming", "aggregation"],
+    file: "/templates/workflows/ad-click-aggregator.excalidraw",
+  },
+  {
+    id: "workflows/log-ingestion",
+    name: "Log Ingestion",
+    description: "Splunk/Datadog-style: agents, buffers, indexing and dashboards",
+    category: "workflows",
+    tags: ["observability", "logging", "pipeline"],
+    file: "/templates/workflows/log-ingestion.excalidraw",
   },
 
   // Algorithms
@@ -250,6 +306,14 @@ const RAW_TEMPLATES = [
     category: "algorithms",
     tags: ["data-structure", "overview", "comparison"],
     file: "/templates/algorithms/data-structures.excalidraw",
+  },
+  {
+    id: "algorithms/advanced-data-structures",
+    name: "Advanced Data Structures",
+    description: "HyperLogLog, Count-Min Sketch, Skip Lists, Merkle Tree",
+    category: "algorithms",
+    tags: ["probabilistic", "sketches", "interview"],
+    file: "/templates/algorithms/advanced-data-structures.excalidraw",
   },
 
   // Network

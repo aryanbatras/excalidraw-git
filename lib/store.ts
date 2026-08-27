@@ -59,7 +59,7 @@ export const useStore = create<State>()(
       status: "idle",
       statusMsg: null,
       sceneCache: {},
-      autoSaveEnabled: true,
+      autoSaveEnabled: false,
       autoSaveIntervalSeconds: 60,
       enabledLibraries: ["software-logos", "aws-architecture", "devops-icons"],
 
@@ -95,6 +95,7 @@ export const useStore = create<State>()(
     }),
     {
       name: "exgit-store",
+      version: 1,
       storage: createJSONStorage(() =>
         typeof window !== "undefined" ? window.localStorage : noopStorage,
       ),

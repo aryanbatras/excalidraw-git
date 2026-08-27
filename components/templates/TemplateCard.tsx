@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { CATEGORY_META, type GalleryTemplate } from "@/lib/templates/gallery";
+import type { GalleryTemplate } from "@/lib/templates/gallery";
 
 export function TemplateCard({
   template,
@@ -11,17 +11,18 @@ export function TemplateCard({
   template: GalleryTemplate;
   onClick: () => void;
 }) {
-  const cat = CATEGORY_META[template.category];
   const [imgFailed, setImgFailed] = useState(false);
   return (
     <button
       onClick={onClick}
       className="group flex flex-col overflow-hidden rounded-xl bg-white text-left transition hover:shadow-md"
     >
-      {/* Thumbnail (400×300 preview); falls back to a category tile if missing */}
-      <div className="relative flex h-28 items-center justify-center overflow-hidden bg-gradient-to-br from-accent/5 to-accent/10 text-3xl">
+      {/* Thumbnail (400×300 preview); falls back to a plain-text tile if missing */}
+      <div className="relative flex h-28 items-center justify-center overflow-hidden bg-gradient-to-br from-accent/5 to-accent/10">
         {imgFailed ? (
-          cat.icon
+          <span className="px-1 text-center text-[12px] font-medium leading-tight text-text-muted">
+            {template.name}
+          </span>
         ) : (
           <Image
             src={template.thumbnail}

@@ -8,6 +8,7 @@ import { useStore } from "@/lib/store";
 import { RepoPicker } from "@/components/RepoPicker";
 import { FileTree } from "@/components/sidebar/FileTree";
 import { TopBar } from "@/components/topbar/TopBar";
+import { SidebarSimple } from "@phosphor-icons/react";
 import { Modal, Button } from "@/components/ui";
 import type { Scene, TreeEntry } from "@/lib/types";
 import type { TemplateId } from "@/lib/templates";
@@ -63,6 +64,13 @@ export function AppShell() {
   const [deleting, setDeleting] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Left sidebar: pinned open by default; can be collapsed to a thin rail that
+  // expands on hover ("5% of screen → full width").
+  const [sidebarPinned, setSidebarPinned] = useState(true);
+  const [sidebarHover, setSidebarHover] = useState(false);
+  const sidebarCollapsed = !sidebarPinned;
+  const sidebarExpanded = sidebarPinned || sidebarHover;
 
   // Global auto-save: commits all dirty files at the configured interval
   const autoSaveEnabled = useStore((s) => s.autoSaveEnabled);
@@ -390,24 +398,51 @@ export function AppShell() {
         onRestore={restoreVersion}
       />
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[260px] shrink-0 flex-col bg-surface shadow-[4px_0_24px_rgba(0,0,0,0.03)]">
-          <div className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-text-faint">
+        <aside
+        onMouseEnter={() => setSidebarHover(true)}
+        onMouseLeave={() => setSidebarHover(false)}
+        className={`relative flex shrink-0 flex-col overflow-hidden bg-surface shadow-[4px_0_24px_rgba(0,0,0,0.03)] transition-[width] duration-150 ${
+          sidebarExpanded ? "w-[260px]" : "w-10"
+        }`}
+      >
+        <div className="flex items-center gap-1 px-2 py-2.5">
+          {sidebarExpanded && (
+            <span className="flex-1 text-[11px] font-medium uppercase tracking-wide text-text-faint">
+              Files
+            </span>
+          )}
+          <button
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => {
+              setSidebarPinned((p) => !p);
+              setSidebarHover(false);
+            }}
+            className={`grid h-6 w-6 place-items-center rounded-md text-text-muted transition hover:bg-surface-2 hover:text-text ${
+              sidebarExpanded ? "ml-auto" : "m-auto"
+            }`}
+          >
+            <SidebarSimple size={15} weight={sidebarCollapsed ? "bold" : "regular"} />
+          </button>
+        </div>
+        {!sidebarExpanded && (
+          <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1 text-[10px] font-medium uppercase tracking-widest text-text-faint [writing-mode:vertical-rl]">
             Files
-          </div>
-          <FileTree
-            repo={repo}
-            onOpen={openFile}
-            onNewFile={(dir) => {
-              setNewName("");
-              setNewState({ dir, template: "blank" });
-            }}
-            onRename={(entry) => {
-              setRenameName(entry.name.replace(/\.excalidraw$/, ""));
-              setRenameEntry(entry);
-            }}
-            onDelete={(entry) => setDeleteEntry(entry)}
-          />
-        </aside>
+          </span>
+        )}
+        <FileTree
+          repo={repo}
+          onOpen={openFile}
+          onNewFile={(dir) => {
+            setNewName("");
+            setNewState({ dir, template: "blank" });
+          }}
+          onRename={(entry) => {
+            setRenameName(entry.name.replace(/\.excalidraw$/, ""));
+            setRenameEntry(entry);
+          }}
+          onDelete={(entry) => setDeleteEntry(entry)}
+        />
+      </aside>
 
         <main className="relative flex min-w-0 flex-1 flex-col bg-white shadow-[inset_0_0_40px_rgba(0,0,0,0.03)]">
           {recovered && current && recovered.path === current.path && (

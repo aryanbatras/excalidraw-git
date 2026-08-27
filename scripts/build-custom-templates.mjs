@@ -214,4 +214,77 @@ function save(file, s) {
   console.log("network/home-office ok");
 }
 
+// ---- mind-maps (radial layout) --------------------------------------------
+// Classic radial/radiating mind map: central root, evenly-spaced branches with
+// child leaves per branch. (Previous hand-made versions were cramped and
+// flat — this produces a clean, readable radiating structure.)
+function radialMindMap(rootLabel, branches, rootBg = "#6965db") {
+  const e = [];
+  const rootW = 190;
+  const rootH = 64;
+  const R = 290; // branch radius
+  const LR = 560; // leaf radius
+  e.push(el("rectangle", { x: -rootW / 2, y: -rootH / 2, width: rootW, height: rootH },
+    { backgroundColor: rootBg, fillStyle: "solid", strokeColor: "#ffffff" }));
+  e.push(el("text", { x: -rootW / 2, y: -rootH / 2, width: rootW, height: rootH, text: rootLabel },
+    { fontSize: 17, fontFamily: 2, strokeColor: "#ffffff" }));
+
+  const nBranches = branches.length;
+  branches.forEach((b, i) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / nBranches;
+    const bx = Math.cos(angle) * R;
+    const by = Math.sin(angle) * R;
+    const bw = 150 + 20 * (b.label.length > 18 ? 1 : 0);
+    const bh = 40;
+    e.push(el("line", { x: 0, y: 0, width: 0, height: 0 },
+      { points: [[0, 0], [bx, by]] }));
+    e.push(el("rectangle", { x: bx - bw / 2, y: by - bh / 2, width: bw, height: bh },
+      { backgroundColor: b.bg ?? "#dbe4ff", fillStyle: "solid" }));
+    e.push(el("text", { x: bx - bw / 2, y: by - bh / 2, width: bw, height: bh, text: b.label },
+      { fontSize: 13 }));
+
+    const leaves = b.leaves ?? [];
+    leaves.forEach((leaf, j) => {
+      const spread = ((j + 1) / (leaves.length + 1) - 0.5) * 0.7;
+      const la = angle + spread;
+      const lx = Math.cos(la) * LR;
+      const ly = Math.sin(la) * LR;
+      e.push(el("line", { x: bx, y: by, width: 0, height: 0 },
+        { points: [[0, 0], [lx - bx, ly - by]] }));
+      const lw = leaf.length > 22 ? 200 : 150;
+      const lh = 30;
+      e.push(el("rectangle", { x: lx - lw / 2, y: ly - lh / 2, width: lw, height: lh },
+        { backgroundColor: "#f4f4f6", fillStyle: "solid" }));
+      e.push(el("text", { x: lx - lw / 2, y: ly - lh / 2, width: lw, height: lh, text: leaf },
+        { fontSize: 11.5, strokeColor: "#444" }));
+    });
+  });
+  return e;
+}
+{
+  // Interview/study brainstorm: radiating idea map around a core problem.
+  const e = radialMindMap("Design a feature from scratch", [
+    { label: "Clarify requirements", bg: "#cffafe", leaves: ["Who is the user?", "Scale expectations", "Non-negotiables", "Constraints & budget"] },
+    { label: "Core entities", bg: "#d6f5d6", leaves: ["User, Content", "Relationships", "Storage model"] },
+    { label: "Interface", bg: "#fff3bf", leaves: ["REST / GraphQL", "Webhook events", "Rate limits"] },
+    { label: "High-level design", bg: "#e7d6f9", leaves: ["Components", "Data flow", "Request path"] },
+    { label: "Deep dives", bg: "#ffe8cc", leaves: ["Hotspots", "Fault tolerance", "Consistency"] },
+    { label: "Wrap-up", bg: "#fee2ff", leaves: ["Trade-offs", "Metrics", "Next steps"] },
+  ]);
+  await save("mind-maps/brainstorm.excalidraw", scene("brainstorm", e));
+  console.log("mind-maps/brainstorm ok (radial)");
+}
+{
+  // Interview prep planning map: study areas radiating from a goal.
+  const e = radialMindMap("Interview prep plan", [
+    { label: "Algorithms & DS", bg: "#d6f5d6", leaves: ["Arrays, strings, hashing", "Trees & graphs", "Dynamic programming", "Sliding window"] },
+    { label: "System design", bg: "#cffafe", leaves: ["Load balancers, caches", "Message queues", "Databases & sharding", "Rate limiting"] },
+    { label: "Languages & code", bg: "#fff3bf", leaves: ["Weekly implementations", "Review past projects"] },
+    { label: "Behavioral", bg: "#ffd6d6", leaves: ["STAR stories", "Goal alignment", "Conflict examples"] },
+    { label: "Nailing it", bg: "#e7d6f9", leaves: ["Mocks with peers", "Whiteboard practice", "Feedback loop"] },
+  ]);
+  await save("mind-maps/project-planning.excalidraw", scene("project planning", e));
+  console.log("mind-maps/project-planning ok (radial)");
+}
+
 console.log("done");

@@ -85,7 +85,7 @@ export function TemplateGallery({
               active={activeCategory === cat}
               onClick={() => setActiveCategory(cat)}
             >
-              {CATEGORY_META[cat].icon} {CATEGORY_META[cat].label}
+              {CATEGORY_META[cat].label}
             </Tab>
           ))}
         </div>

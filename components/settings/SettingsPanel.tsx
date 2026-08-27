@@ -1,20 +1,23 @@
 "use client";
 
 import { useStore } from "@/lib/store";
+import { LIBRARIES } from "@/lib/libraries/registry";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const autoSaveEnabled = useStore((s) => s.autoSaveEnabled);
   const autoSaveInterval = useStore((s) => s.autoSaveIntervalSeconds);
   const setAutoSave = useStore((s) => s.setAutoSave);
   const setAutoSaveInterval = useStore((s) => s.setAutoSaveInterval);
+  const enabledLibraries = useStore((s) => s.enabledLibraries);
+  const toggleLibrary = useStore((s) => s.toggleLibrary);
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/30"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40"
       onClick={onClose}
     >
       <div
-        className="w-[340px] rounded-2xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
+        className="w-[380px] max-h-[80vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-[15px] font-semibold text-text">Settings</h2>
@@ -57,6 +60,38 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Libraries */}
+        <div className="mt-5 border-t border-border/50 pt-4">
+          <h3 className="mb-1 text-[12px] font-medium text-text-muted">Libraries</h3>
+          <p className="mb-3 text-[11px] text-text-faint">
+            Load community icon sets into the Excalidraw sidebar. Changes apply on next file open.
+          </p>
+          <div className="space-y-1">
+            {LIBRARIES.map((lib) => (
+              <button
+                key={lib.id}
+                onClick={() => toggleLibrary(lib.id)}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-surface-2"
+              >
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] ${
+                    enabledLibraries.includes(lib.id)
+                      ? "border-accent bg-accent text-white"
+                      : "border-border bg-white text-transparent"
+                  }`}
+                >
+                  {enabledLibraries.includes(lib.id) && "✓"}
+                </span>
+                <span className="text-lg leading-none">{lib.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[12px] font-medium text-text">{lib.name}</div>
+                  <div className="truncate text-[10px] text-text-faint">{lib.items} items · {lib.category}</div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Keyboard shortcuts */}

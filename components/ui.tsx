@@ -16,9 +16,19 @@ const variants: Record<Variant, string> = {
 export function Button({
   variant = "quiet",
   className = "",
+  loading = false,
+  loadingText,
+  children,
+  disabled,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
-  return <button className={`${base} ${variants[variant]} ${className}`} {...props} />;
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean; loadingText?: string }) {
+  const isDisabled = disabled || loading;
+  return (
+    <button className={`${base} ${variants[variant]} ${className}`} disabled={isDisabled} {...props}>
+      {loading && <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />}
+      {loading ? (loadingText ?? "Loading…") : children}
+    </button>
+  );
 }
 
 export function IconButton({

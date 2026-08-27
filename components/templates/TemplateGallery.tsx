@@ -1,0 +1,192 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import { X } from "@phosphor-icons/react/dist/ssr";
+import {
+  GALLERY_TEMPLATES,
+  CATEGORY_META,
+  type TemplateCategory,
+  type GalleryTemplate,
+} from "@/lib/templates/gallery";
+import { TemplateCard } from "./TemplateCard";
+
+const ALL_CATEGORIES: TemplateCategory[] = Object.keys(CATEGORY_META) as TemplateCategory[];
+
+export function TemplateGallery({
+  onClose,
+  onSelect,
+}: {
+  onClose: () => void;
+  onSelect: (template: GalleryTemplate, mode: "append" | "new") => void;
+}) {
+  const [activeCategory, setActiveCategory] = useState<TemplateCategory | "all">("all");
+  const [search, setSearch] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<GalleryTemplate | null>(null);
+
+  const filtered = useMemo(() => {
+    let list = GALLERY_TEMPLATES;
+    if (activeCategory !== "all") {
+      list = list.filter((t) => t.category === activeCategory);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q) ||
+          t.tags.some((tag) => tag.includes(q)),
+      );
+    }
+    return list;
+  }, [activeCategory, search]);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col border-l border-border bg-white shadow-xl">
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <h2 className="flex-1 text-[15px] font-semibold text-text">Templates</h2>
+          <button
+            onClick={onClose}
+            className="grid h-7 w-7 place-items-center rounded-lg text-text-muted transition hover:bg-surface-2 hover:text-text"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="border-b border-border px-4 py-2.5">
+          <input
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search templates…"
+            className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-[13px] text-text outline-none placeholder:text-text-faint focus:border-accent"
+          />
+        </div>
+
+        {/* Category tabs */}
+        <div className="flex gap-1.5 overflow-x-auto border-b border-border px-4 py-2 scrollbar-none">
+          <Tab
+            active={activeCategory === "all"}
+            onClick={() => setActiveCategory("all")}
+          >
+            All
+          </Tab>
+          {ALL_CATEGORIES.map((cat) => (
+            <Tab
+              key={cat}
+              active={activeCategory === cat}
+              onClick={() => setActiveCategory(cat)}
+            >
+              {CATEGORY_META[cat].icon} {CATEGORY_META[cat].label}
+            </Tab>
+          ))}
+        </div>
+
+        {/* Grid */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {filtered.length === 0 ? (
+            <p className="py-12 text-center text-[13px] text-text-muted">No templates found.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2.5">
+              {filtered.map((t) => (
+                <TemplateCard
+                  key={t.id}
+                  template={t}
+                  onClick={() => setSelectedTemplate(t)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer count */}
+        <div className="border-t border-border px-4 py-2 text-[11px] text-text-muted">
+          {filtered.length} template{filtered.length !== 1 && "s"}
+        </div>
+      </div>
+
+      {/* Append/New choice modal */}
+      {selectedTemplate && (
+        <div
+          className="fixed inset-0 z-[60] grid place-items-center bg-black/30"
+          onClick={() => setSelectedTemplate(null)}
+        >
+          <div
+            className="w-[340px] rounded-2xl border border-border bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[15px] font-semibold text-text">
+              {selectedTemplate.name}
+            </h3>
+            <p className="mt-1 text-[13px] text-text-muted">
+              {selectedTemplate.description}
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  onSelect(selectedTemplate, "append");
+                  setSelectedTemplate(null);
+                  onClose();
+                }}
+                className="rounded-xl border border-border bg-white px-4 py-2.5 text-left text-[13px] font-medium text-text transition hover:border-accent/40 hover:shadow-sm"
+              >
+                Append to current file
+                <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
+                  Adds elements to the right of your diagram
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  onSelect(selectedTemplate, "new");
+                  setSelectedTemplate(null);
+                  onClose();
+                }}
+                className="rounded-xl border border-border bg-white px-4 py-2.5 text-left text-[13px] font-medium text-text transition hover:border-accent/40 hover:shadow-sm"
+              >
+                Create new file
+                <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
+                  Opens a new file with the template content
+                </span>
+              </button>
+            </div>
+            <button
+              onClick={() => setSelectedTemplate(null)}
+              className="mt-3 w-full text-center text-[12px] text-text-muted hover:text-text"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Tab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-medium transition ${
+        active
+          ? "bg-text text-white"
+          : "bg-surface-2 text-text-muted hover:bg-surface hover:text-text"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}

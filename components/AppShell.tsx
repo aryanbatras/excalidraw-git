@@ -10,8 +10,11 @@ import { TopBar } from "@/components/topbar/TopBar";
 import { Modal, Button } from "@/components/ui";
 import type { Scene, TreeEntry } from "@/lib/types";
 import type { TemplateId } from "@/lib/templates";
+import type { GalleryTemplate } from "@/lib/templates/gallery";
 import { sceneToBase64 } from "@/lib/excalidraw-serialize";
 import { loadScene, saveScene, clearScene } from "@/lib/idb";
+import { TemplateGallery } from "@/components/templates/TemplateGallery";
+import { appendTemplateToScene } from "@/components/templates/appendTemplate";
 
 // Editor must never load on the server (Excalidraw touches window at import).
 const EditorPane = dynamic(
@@ -47,6 +50,10 @@ export function AppShell() {
   const [renameEntry, setRenameEntry] = useState<TreeEntry | null>(null);
   const [renameName, setRenameName] = useState("");
   const [deleteEntry, setDeleteEntry] = useState<TreeEntry | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   useEffect(() => {
     if (session?.user?.login) setLogin(session.user.login);
@@ -109,15 +116,16 @@ export function AppShell() {
   }, [repo, selectedPath]);
 
   async function createFile(dir: string, template: TemplateId) {
-    if (!repo) return;
+    if (!repo || creating) return;
     const name = newName.trim();
     if (!name) return;
     const safe = name.endsWith(".excalidraw") ? name : `${name}.excalidraw`;
     const path = dir ? `${dir}/${safe}` : safe;
-    const { buildTemplate } = await import("@/lib/templates");
-    const scene = buildTemplate(template);
-    const b64 = sceneToBase64(scene);
+    setCreating(true);
     try {
+      const { buildTemplate } = await import("@/lib/templates");
+      const scene = buildTemplate(template);
+      const b64 = sceneToBase64(scene);
       const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
       const res = await fetch(`/api/file?${qs}`, {
         method: "POST",
@@ -128,16 +136,17 @@ export function AppShell() {
       invalidateDir(dir);
       setNewState(null);
       setNewName("");
-      // Wipe any stale IDB record so the fresh GitHub file is authoritative.
       void clearScene(`${repo.owner}/${repo.repo}/${path}`);
       await openFile(path);
     } catch (e) {
       setStatus("error", (e as Error).message);
+    } finally {
+      setCreating(false);
     }
   }
 
   async function doRename() {
-    if (!repo || !renameEntry) return;
+    if (!repo || !renameEntry || renaming) return;
     const dir = renameEntry.path.includes("/")
       ? renameEntry.path.slice(0, renameEntry.path.lastIndexOf("/"))
       : "";
@@ -146,6 +155,7 @@ export function AppShell() {
       : `${renameName.trim()}.excalidraw`;
     const to = dir ? `${dir}/${name}` : name;
     const from = renameEntry.path;
+    setRenaming(true);
     try {
       const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
       const res = await fetch(`/api/file?${qs}`, {
@@ -162,14 +172,17 @@ export function AppShell() {
       setRenameEntry(null);
     } catch (e) {
       setStatus("error", (e as Error).message);
+    } finally {
+      setRenaming(false);
     }
   }
 
   async function doDelete() {
-    if (!repo || !deleteEntry) return;
+    if (!repo || !deleteEntry || deleting) return;
     const dir = deleteEntry.path.includes("/")
       ? deleteEntry.path.slice(0, deleteEntry.path.lastIndexOf("/"))
       : "";
+    setDeleting(true);
     try {
       const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}&path=${encodeURIComponent(deleteEntry.path)}`;
       const res = await fetch(`/api/file?${qs}`, { method: "DELETE" });
@@ -184,6 +197,8 @@ export function AppShell() {
       setDeleteEntry(null);
     } catch (e) {
       setStatus("error", (e as Error).message);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -215,6 +230,55 @@ export function AppShell() {
     }
   }
 
+  async function handleTemplateSelect(template: GalleryTemplate, mode: "append" | "new") {
+    if (!repo) return;
+    if (mode === "new") {
+      // Open new-file modal pre-filled with template name
+      const safe = template.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      setNewName(safe);
+      const dir = selectedPath && selectedPath.includes("/")
+        ? selectedPath.slice(0, selectedPath.lastIndexOf("/"))
+        : "";
+      setNewState({ dir, template: "blank" as TemplateId });
+      // Fetch template file and write it as a new file
+      try {
+        const res = await fetch(template.file);
+        const tplScene = (await res.json()) as Scene;
+        const path = dir ? `${dir}/${safe}.excalidraw` : `${safe}.excalidraw`;
+        const b64 = sceneToBase64(tplScene);
+        const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
+        const cRes = await fetch(`/api/file?${qs}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, content: b64 }),
+        });
+        if (!cRes.ok) throw new Error((await cRes.text()) || `Failed (${cRes.status})`);
+        invalidateDir(dir);
+        void clearScene(`${repo.owner}/${repo.repo}/${path}`);
+        await openFile(path);
+      } catch (e) {
+        setStatus("error", (e as Error).message);
+      }
+      return;
+    }
+    // Append mode: merge template elements into current scene
+    if (!current) {
+      setStatus("error", "Open a file first to append template elements.");
+      return;
+    }
+    try {
+      const res = await fetch(template.file);
+      const tplScene = (await res.json()) as { elements: any[] };
+      const merged = appendTemplateToScene(current.scene.elements ?? [], tplScene.elements ?? []);
+      const updatedScene: Scene = { ...current.scene, elements: merged };
+      setCurrent({ ...current, scene: updatedScene });
+      cacheScene(current.path, updatedScene, current.sha);
+      setStatus("saved", `Appended "${template.name}" to canvas`);
+    } catch (e) {
+      setStatus("error", (e as Error).message);
+    }
+  }
+
   if (!repo) return <RepoPicker />;
 
   return (
@@ -230,6 +294,7 @@ export function AppShell() {
             : "";
           setNewState({ dir, template: id });
         }}
+        onTemplates={() => setGalleryOpen(true)}
         onChangeRepo={() => clearRepo()}
         onRestore={restoreVersion}
       />
@@ -322,7 +387,7 @@ export function AppShell() {
           />
           <div className="flex justify-end gap-2">
             <Button onClick={() => setNewState(null)}>Cancel</Button>
-            <Button variant="primary" onClick={() => void createFile(newState.dir, newState.template)}>
+            <Button variant="primary" loading={creating} loadingText="Creating…" onClick={() => void createFile(newState.dir, newState.template)}>
               Create
             </Button>
           </div>
@@ -340,7 +405,7 @@ export function AppShell() {
           />
           <div className="flex justify-end gap-2">
             <Button onClick={() => setRenameEntry(null)}>Cancel</Button>
-            <Button variant="primary" onClick={() => void doRename()}>
+            <Button variant="primary" loading={renaming} loadingText="Renaming…" onClick={() => void doRename()}>
               Rename
             </Button>
           </div>
@@ -355,11 +420,18 @@ export function AppShell() {
           </p>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setDeleteEntry(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => void doDelete()}>
+            <Button variant="danger" loading={deleting} loadingText="Deleting…" onClick={() => void doDelete()}>
               Delete
             </Button>
           </div>
         </Modal>
+      )}
+      {/* Template gallery */}
+      {galleryOpen && (
+        <TemplateGallery
+          onClose={() => setGalleryOpen(false)}
+          onSelect={handleTemplateSelect}
+        />
       )}
     </div>
   );

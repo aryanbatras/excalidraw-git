@@ -39,6 +39,7 @@ export function TopBar({
   selectedPath,
   onSave,
   onNew,
+  onTemplates,
   onChangeRepo,
   onRestore,
 }: {
@@ -46,6 +47,7 @@ export function TopBar({
   selectedPath: string | null;
   onSave: () => void;
   onNew: (id: TemplateId) => void;
+  onTemplates: () => void;
   onChangeRepo: () => void;
   onRestore: (sha: string) => void;
 }) {
@@ -121,6 +123,11 @@ export function TopBar({
           </div>
         )}
       </div>
+
+      {/* Templates gallery */}
+      <Button variant="quiet" onClick={onTemplates}>
+        Templates
+      </Button>
 
       {/* History / restore */}
       <div className="relative">

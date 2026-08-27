@@ -14,6 +14,7 @@ export type GalleryTemplate = {
   description: string;
   category: TemplateCategory;
   tags: string[];
+  thumbnail: string;
   file: string;
 };
 
@@ -28,7 +29,7 @@ export const CATEGORY_META: Record<TemplateCategory, { label: string; icon: stri
   network: { label: "Network", icon: "🌐" },
 };
 
-export const GALLERY_TEMPLATES: GalleryTemplate[] = [
+const RAW_TEMPLATES = [
   // System Design
   {
     id: "system-design/load-balancer",
@@ -81,6 +82,14 @@ export const GALLERY_TEMPLATES: GalleryTemplate[] = [
     file: "/templates/cloud-arch/aws-3-tier.excalidraw",
   },
   {
+    id: "cloud-arch/microservices",
+    name: "Microservices",
+    description: "API gateway fan-out to independent services",
+    category: "cloud-arch",
+    tags: ["architecture", "services", "gateway"],
+    file: "/templates/cloud-arch/microservices.excalidraw",
+  },
+  {
     id: "cloud-arch/serverless-api",
     name: "Serverless API",
     description: "API Gateway → Lambda → DynamoDB",
@@ -122,6 +131,14 @@ export const GALLERY_TEMPLATES: GalleryTemplate[] = [
     tags: ["database", "entity", "relationship"],
     file: "/templates/uml-er/er-diagram.excalidraw",
   },
+  {
+    id: "uml-er/sequence-diagram",
+    name: "Sequence Diagram",
+    description: "Client → server → database interaction timeline",
+    category: "uml-er",
+    tags: ["uml", "sequence", "timeline"],
+    file: "/templates/uml-er/sequence-diagram.excalidraw",
+  },
 
   // Wireframes
   {
@@ -131,6 +148,22 @@ export const GALLERY_TEMPLATES: GalleryTemplate[] = [
     category: "wireframes",
     tags: ["web", "landing", "marketing"],
     file: "/templates/wireframes/web-layout-wireframe.excalidraw",
+  },
+  {
+    id: "wireframes/mobile-app",
+    name: "Mobile App",
+    description: "Phone shell, hero, CTA stack, and content rows",
+    category: "wireframes",
+    tags: ["mobile", "app", "hero"],
+    file: "/templates/wireframes/mobile-app.excalidraw",
+  },
+  {
+    id: "wireframes/dashboard",
+    name: "Dashboard",
+    description: "Sidebar, stat cards, chart, and activity panel",
+    category: "wireframes",
+    tags: ["dashboard", "analytics", "ui"],
+    file: "/templates/wireframes/dashboard.excalidraw",
   },
 
   // Mind Maps
@@ -167,6 +200,14 @@ export const GALLERY_TEMPLATES: GalleryTemplate[] = [
     category: "workflows",
     tags: ["business", "process", "approval"],
     file: "/templates/workflows/approval-flow.excalidraw",
+  },
+  {
+    id: "workflows/data-pipeline",
+    name: "Data Pipeline",
+    description: "Ingest → transform → store → serve with a retry loop",
+    category: "workflows",
+    tags: ["data", "etl", "pipeline"],
+    file: "/templates/workflows/data-pipeline.excalidraw",
   },
 
   // Algorithms
@@ -220,4 +261,27 @@ export const GALLERY_TEMPLATES: GalleryTemplate[] = [
     tags: ["aws", "vpc", "networking"],
     file: "/templates/network/aws-networking.excalidraw",
   },
-];
+  {
+    id: "network/datacenter-toplogy",
+    name: "Datacenter Topology",
+    description: "Core / aggregation switches with per-rack access",
+    category: "network",
+    tags: ["datacenter", "topology", "switching"],
+    file: "/templates/network/datacenter-topology.excalidraw",
+  },
+  {
+    id: "network/home-office",
+    name: "Home Office",
+    description: "Modem → router to wired and Wi-Fi devices",
+    category: "network",
+    tags: ["home", "wifi", "router"],
+    file: "/templates/network/home-office.excalidraw",
+  },
+] as const satisfies readonly Omit<GalleryTemplate, "thumbnail">[];
+
+export const GALLERY_TEMPLATES: GalleryTemplate[] = RAW_TEMPLATES.map((t) => ({
+  ...t,
+  // 400×300 WebP previews live under _thumbs/<category>/<slug>.webp (generated
+  // by scripts/generate-thumbs.mjs). Slug = the template file's basename.
+  thumbnail: t.file.replace(/^\/templates\//, "/templates/_thumbs/").replace(/\.excalidraw$/, ".webp"),
+}));

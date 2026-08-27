@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "thumbs": "node scripts/generate-thumbs.mjs",
+    "test": "node scripts/test-append.mjs && node scripts/test-serialize.mjs && node scripts/test-templates.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
@@ -28,6 +30,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
+    "sharp": "^0.35.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

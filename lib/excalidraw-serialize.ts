@@ -34,7 +34,10 @@ export function base64ToScene(b64: string): Scene {
   if (typeof window === "undefined") {
     json = Buffer.from(b64, "base64").toString("utf8");
   } else {
-    json = atob(b64);
+    // atob yields UTF-8 bytes as Latin-1 code units — decode properly to UTF-8.
+    json = new TextDecoder("utf-8").decode(
+      Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)),
+    );
   }
   return JSON.parse(json) as Scene;
 }

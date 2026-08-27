@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { GithubLogo } from "@phosphor-icons/react";
 
@@ -10,14 +10,14 @@ const ERROR_TEXT: Record<string, string> = {
   default: "Sign in failed. Please try again.",
 };
 
-export default function LoginPage() {
-  const [error, setError] = useState<string | null>(null);
+function readOAuthError(): string | null {
+  if (typeof window === "undefined") return null;
+  const e = new URLSearchParams(window.location.search).get("error");
+  return e ? ERROR_TEXT[e] ?? ERROR_TEXT.default : null;
+}
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const e = params.get("error");
-    if (e) setError(ERROR_TEXT[e] ?? ERROR_TEXT.default);
-  }, []);
+export default function LoginPage() {
+  const [error] = useState<string | null>(readOAuthError);
 
   return (
     <main className="grid min-h-[100dvh] place-items-center bg-white">

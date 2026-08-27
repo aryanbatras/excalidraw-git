@@ -40,6 +40,8 @@ export function AppShell() {
   const [current, setCurrent] = useState<{ path: string; scene: Scene; sha: string } | null>(null);
   const [recovered, setRecovered] = useState<{ path: string; remote: Scene } | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
+  // Monotonic token: only the most recent openFile() request may write current state.
+  const loadSeq = useRef(0);
   const saveRef = useRef<(() => void) | null>(null);
   // Live Excalidraw imperative API — needed to push template-append changes onto the canvas.
   const excalidrawRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -115,6 +117,7 @@ export function AppShell() {
   const openFile = useCallback(
     async (path: string) => {
       if (!repo) return;
+      const seq = ++loadSeq.current;
       setLoadingFile(true);
       setSelectedPath(path);
       setRecovered(null);
@@ -122,13 +125,14 @@ export function AppShell() {
         // In-session switch: store cache already holds local edits → instant.
         const cached = getCachedLocal(path);
         if (cached?.scene) {
-          setCurrent({ path, scene: cached.scene, sha: cached.sha });
+          if (seq === loadSeq.current) setCurrent({ path, scene: cached.scene, sha: cached.sha });
           return;
         }
         const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}&path=${encodeURIComponent(path)}`;
         const res = await fetch(`/api/file?${qs}`);
         if (!res.ok) throw new Error((await res.text()) || `Failed (${res.status})`);
         const data = (await res.json()) as { scene: Scene; sha: string };
+        if (seq !== loadSeq.current) return; // a newer open superseded this one
         const key = `${repo.owner}/${repo.repo}/${path}`;
         // Boot recovery: prefer a divergent IndexedDB mirror (unsaved local work).
         const idbRec = await loadScene(key);
@@ -137,6 +141,7 @@ export function AppShell() {
           sceneToUse = idbRec.scene;
           setRecovered({ path, remote: data.scene });
         }
+        if (seq !== loadSeq.current) return;
         setCurrent({ path, scene: sceneToUse, sha: data.sha });
         cacheScene(path, sceneToUse, data.sha);
         // record the branch head commit sha at load time (for conflict checks)
@@ -152,17 +157,20 @@ export function AppShell() {
           /* best-effort */
         }
       } catch (e) {
-        setStatus("error", (e as Error).message);
+        if (seq === loadSeq.current) setStatus("error", (e as Error).message);
       } finally {
-        setLoadingFile(false);
+        if (seq === loadSeq.current) setLoadingFile(false);
       }
     },
-    [repo, setSelectedPath, cacheScene, getCachedLocal, setStatus],
+    [repo, setSelectedPath, cacheScene, getCachedLocal, setStatus, setHead],
   );
 
   // open persisted selection on mount
   useEffect(() => {
     if (repo && selectedPath && (!current || current.path !== selectedPath)) {
+      // Intended orchestration: restore the persisted selection exactly once;
+      // openFile performs async I/O and its sync prefix sets the loading state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void openFile(selectedPath);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -517,6 +525,7 @@ export function AppShell() {
         <TemplateGallery
           onClose={() => setGalleryOpen(false)}
           onSelect={handleTemplateSelect}
+          canAppend={!!current}
         />
       )}
 

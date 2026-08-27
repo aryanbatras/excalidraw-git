@@ -32,26 +32,44 @@ export function EditorPane({
 
   const latest = useRef<{ scene: Scene; sha: string }>({ scene: initialScene, sha: initialSha });
   const debounce = useRef<number | null>(null);
+  // True when there are edits not yet written to the store cache / IndexedDB.
+  const pendingEdit = useRef(false);
+
+  const flushEdit = useCallback(
+    (persist: boolean) => {
+      const scene = latest.current.scene;
+      const key = `${repo.owner}/${repo.repo}/${path}`;
+      if (persist) {
+        cacheScene(path, scene, latest.current.sha);
+        void saveScene(key, scene, latest.current.sha);
+      }
+      pendingEdit.current = false;
+      if (debounce.current) {
+        window.clearTimeout(debounce.current);
+        debounce.current = null;
+      }
+      markDirty(path, true);
+    },
+    [repo, path, cacheScene, markDirty],
+  );
 
   const handleChange = useCallback(
     (elements: unknown, appState: unknown, files: unknown) => {
       const json = serializeAsJSON(elements as never, appState as never, files as never, "local");
       const scene = JSON.parse(json) as Scene;
       latest.current = { scene, sha: latest.current.sha };
+      pendingEdit.current = true;
       if (debounce.current) window.clearTimeout(debounce.current);
       debounce.current = window.setTimeout(() => {
-        const key = `${repo.owner}/${repo.repo}/${path}`;
-        cacheScene(path, scene, latest.current.sha);
-        void saveScene(key, scene, latest.current.sha);
-        markDirty(path, true);
+        debounce.current = null;
+        flushEdit(true);
       }, 800);
     },
-    [repo, path, cacheScene, markDirty],
+    [flushEdit],
   );
 
   const saveCurrent = useCallback(async () => {
-    const cached = getCached(path);
-    const scene = cached ? cached.scene : latest.current.scene;
+    const scene = latest.current.scene ?? getCached(path)?.scene;
     if (!scene) return;
 
     // Conflict check: abort if the branch head moved since we loaded the file.
@@ -86,6 +104,7 @@ export function EditorPane({
       }
       const data = (await res.json()) as { commitSha: string };
       latest.current = { scene, sha: data.commitSha };
+      pendingEdit.current = false;
       cacheScene(path, scene, data.commitSha);
       void saveScene(`${repo.owner}/${repo.repo}/${path}`, scene, data.commitSha);
       markDirty(path, false);
@@ -94,7 +113,7 @@ export function EditorPane({
     } catch (e) {
       setStatus("error", (e as Error).message);
     }
-  }, [repo, path, getCached, cacheScene, markDirty, setStatus]);
+  }, [repo, path, getCached, cacheScene, markDirty, setStatus, setHead]);
 
   useEffect(() => {
     registerSave(() => void saveCurrent());
@@ -113,18 +132,27 @@ export function EditorPane({
     return () => window.removeEventListener("keydown", onKey);
   }, [saveCurrent]);
 
+  // Unmount (file-switch): flush any edit still inside the debounce window so
+  // nothing is lost and the global auto-save can pick this file up immediately.
+  useEffect(() => {
+    return () => {
+      if (pendingEdit.current) flushEdit(true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
+
   // crash-safe flush on tab hide/close
   useEffect(() => {
     const onHide = () => {
       if (document.visibilityState === "hidden") {
-        const cached = getCached(path);
-        if (cached) void saveScene(`${repo.owner}/${repo.repo}/${path}`, cached.scene, cached.sha);
-        if (useStore.getState().dirty[path]) void saveCurrent();
+        const hasUncommitted = useStore.getState().dirty[path] || pendingEdit.current;
+        if (pendingEdit.current) flushEdit(true);
+        if (hasUncommitted) void saveCurrent();
       }
     };
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
-  }, [repo, path, getCached, saveCurrent]);
+  }, [repo, path, getCached, saveCurrent, flushEdit]);
 
   return (
     <ExcalidrawStage

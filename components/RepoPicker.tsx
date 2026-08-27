@@ -21,8 +21,8 @@ export function RepoPicker() {
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
     const t = setTimeout(async () => {
+      setLoading(true);
       try {
         const qs = search ? `?search=${encodeURIComponent(search)}` : "";
         const res = await fetch(`/api/repos${qs}`);

@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   try {
     const sha = await getHead(token, repo);
     return NextResponse.json({ sha });
-  } catch (e: unknown) {
+  } catch {
     return NextResponse.json({ sha: "" });
   }
 }

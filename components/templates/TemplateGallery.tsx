@@ -15,9 +15,11 @@ const ALL_CATEGORIES: TemplateCategory[] = Object.keys(CATEGORY_META) as Templat
 export function TemplateGallery({
   onClose,
   onSelect,
+  canAppend,
 }: {
   onClose: () => void;
   onSelect: (template: GalleryTemplate, mode: "append" | "new") => void;
+  canAppend: boolean;
 }) {
   const [activeCategory, setActiveCategory] = useState<TemplateCategory | "all">("all");
   const [search, setSearch] = useState("");
@@ -128,19 +130,25 @@ export function TemplateGallery({
               {selectedTemplate.description}
             </p>
             <div className="mt-5 flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  onSelect(selectedTemplate, "append");
-                  setSelectedTemplate(null);
-                  onClose();
-                }}
-                className="rounded-xl bg-surface px-4 py-3 text-left text-[13px] font-medium text-text transition hover:shadow-sm"
-              >
-                Append to current file
-                <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
-                  Adds elements to the right of your diagram
-                </span>
-              </button>
+              {canAppend ? (
+                <button
+                  onClick={() => {
+                    onSelect(selectedTemplate, "append");
+                    setSelectedTemplate(null);
+                    onClose();
+                  }}
+                  className="rounded-xl bg-surface px-4 py-3 text-left text-[13px] font-medium text-text transition hover:shadow-sm"
+                >
+                  Append to current file
+                  <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
+                    Adds elements to the right of your diagram
+                  </span>
+                </button>
+              ) : (
+                <div className="rounded-xl bg-surface px-4 py-3 text-[11px] text-text-faint">
+                  Open a file first to append templates.
+                </div>
+              )}
               <button
                 onClick={() => {
                   onSelect(selectedTemplate, "new");

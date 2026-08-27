@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CaretRight, CaretDown, File, Folder, FolderOpen } from "@phosphor-icons/react";
 import type { RepoRef, TreeEntry } from "@/lib/types";
 import { useStore } from "@/lib/store";
@@ -32,21 +32,36 @@ export function TreeNode({
 
   const isDir = entry.type === "dir";
   const children = loadedDirs[entry.path] ? dirCache[entry.path] : undefined;
+  const loaded = !!loadedDirs[entry.path];
   const isDirty = dirty[entry.path] || (isDir && Object.keys(dirty).some((p) => p.startsWith(entry.path + "/") && dirty[p]));
 
-  async function toggle() {
-    if (!isDir) return;
-    if (!expanded && !loadedDirs[entry.path]) {
+  // If this dir is expanded but not loaded (first expand, or its cache was
+  // invalidated by a mutation), fetch it.
+  useEffect(() => {
+    if (!isDir || !expanded || loaded) return;
+    let alive = true;
+    (async () => {
       setLoading(true);
       try {
         const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}&path=${encodeURIComponent(entry.path)}`;
         const res = await fetch(`/api/tree?${qs}`);
+        if (!res.ok) {
+          if (alive) setDir(entry.path, []);
+          return;
+        }
         const data = (await res.json()) as { entries: TreeEntry[] };
-        setDir(entry.path, data.entries);
+        if (alive) setDir(entry.path, data.entries);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
-    }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isDir, expanded, loaded, entry.path, repo.owner, repo.repo, repo.branch, setDir]);
+
+  function toggle() {
+    if (!isDir) return;
     setExpanded((v) => !v);
   }
 
@@ -58,10 +73,15 @@ export function TreeNode({
         tabIndex={0}
         onClick={() => (isDir ? toggle() : onOpen(entry.path))}
         onKeyDown={(e) => {
-          if (e.key === "Enter") isDir ? toggle() : onOpen(entry.path);
+          if (e.key === "Enter") {
+            if (isDir) toggle();
+            else onOpen(entry.path);
+          }
         }}
         className={`group flex h-[30px] cursor-pointer items-center gap-1.5 rounded-[6px] pr-2 text-[13px] ${
-          selectedPath === entry.path ? "bg-accent-weak text-text" : "text-text hover:bg-surface-2"
+          selectedPath === entry.path
+            ? "bg-accent-weak text-text shadow-[inset_3px_0_0_0_#6965db]"
+            : "text-text hover:bg-surface-2"
         }`}
         style={{ paddingLeft: 8 + depth * 14 }}
       >

@@ -21,8 +21,12 @@ export function FileTree({
   const dirCache = useStore((s) => s.dirCache);
   const loadedDirs = useStore((s) => s.loadedDirs);
   const setDir = useStore((s) => s.setDir);
+  // Subscribing to the boolean re-runs the fetch whenever a mutation
+  // (create/rename/delete) invalidates the root directory.
+  const rootLoaded = !!loadedDirs[""];
 
   useEffect(() => {
+    if (rootLoaded) return;
     let alive = true;
     (async () => {
       const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}&path=`;
@@ -34,7 +38,7 @@ export function FileTree({
     return () => {
       alive = false;
     };
-  }, [repo.owner, repo.repo, repo.branch, setDir]);
+  }, [repo.owner, repo.repo, repo.branch, rootLoaded, setDir]);
 
   const root = loadedDirs[""] ? dirCache[""] : undefined;
 

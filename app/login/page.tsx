@@ -20,25 +20,25 @@ export default function LoginPage() {
   }, []);
 
   return (
-    <main className="grid min-h-[100dvh] place-items-center bg-surface">
-      <div className="w-[340px] max-w-full rounded-[12px] border border-border bg-white p-8 text-center shadow-[0_4px_16px_rgba(24,24,27,0.06)]">
-        <h1 className="text-[17px] font-semibold text-text">Excalidraw Git</h1>
-        <p className="mt-1.5 text-[13px] text-text-muted">
-          Your Excalidraw, backed by Git. Sign in with GitHub to read and write your diagrams.
+    <main className="grid min-h-[100dvh] place-items-center bg-white">
+      <div className="w-[380px] max-w-full rounded-2xl p-8 text-center shadow-[0_8px_40px_rgba(0,0,0,0.06)]">
+        <h1 className="text-[20px] font-bold text-text">Excalidraw + Git</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-text-muted">
+          Your diagrams, backed by GitHub.
         </p>
 
         {error && (
-          <div className="mb-4 mt-4 rounded-[8px] bg-accent-weak px-3 py-2 text-[12px] text-accent">
-            GitHub: {error}
+          <div className="mb-4 mt-5 rounded-xl bg-red-50 px-4 py-2.5 text-[13px] text-danger">
+            {error}
           </div>
         )}
 
         <button
           onClick={() => void signIn("github", { callbackUrl: "/" })}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-[8px] bg-text px-4 py-2 text-[13px] font-medium text-white transition hover:bg-zinc-700 active:translate-y-px"
+          className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#18181b] px-4 py-2.5 text-[14px] font-medium text-white transition hover:bg-zinc-800 active:translate-y-px"
         >
-          <GithubLogo size={16} weight="fill" />
-          Continue with GitHub
+          <GithubLogo size={18} weight="fill" />
+          Sign in with GitHub
         </button>
       </div>
     </main>

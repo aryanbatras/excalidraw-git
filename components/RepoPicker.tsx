@@ -74,17 +74,17 @@ export function RepoPicker() {
   }
 
   return (
-    <div className="grid min-h-[100dvh] place-items-center bg-surface px-4">
-      <div className="w-[460px] max-w-full rounded-[12px] border border-border bg-white p-5 shadow-[0_4px_16px_rgba(24,24,27,0.06)]">
-        <div className="mb-1 flex items-center gap-2">
-          <GithubLogo size={20} weight="fill" className="text-text" />
-          <h1 className="text-[15px] font-semibold text-text">Choose a repository</h1>
+    <div className="grid min-h-[100dvh] place-items-center bg-white px-4">
+      <div className="w-[460px] max-w-full rounded-2xl p-6 shadow-[0_8px_40px_rgba(0,0,0,0.06)]">
+        <div className="mb-1 flex items-center gap-2.5">
+          <GithubLogo size={22} weight="fill" className="text-text" />
+          <h1 className="text-[17px] font-bold text-text">Choose a repository</h1>
         </div>
         <p className="mb-4 text-[13px] text-text-muted">
           Your diagrams are stored as <span className="font-mono">.excalidraw</span> files in a GitHub repo.
         </p>
 
-        <div className="mb-3 flex items-center gap-2 rounded-[8px] border border-border bg-surface px-2.5 py-1.5">
+        <div className="mb-3 flex items-center gap-2 rounded-xl bg-surface px-3 py-2">
           <MagnifyingGlass size={15} className="text-text-faint" />
           <input
             autoFocus
@@ -100,41 +100,41 @@ export function RepoPicker() {
             setCreateErr(null);
             setCreating((v) => !v);
           }}
-          className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-[8px] border border-dashed border-border-strong px-3 py-2 text-[13px] font-medium text-text hover:border-accent hover:text-accent"
+          className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border-strong px-3 py-2.5 text-[13px] font-medium text-text transition hover:border-accent hover:text-accent"
         >
           <Plus size={15} /> New repository
         </button>
 
         {creating && (
-          <div className="mb-3 rounded-[10px] border border-border bg-surface px-3 py-3">
+          <div className="mb-3 rounded-xl bg-surface px-4 py-3">
             <label className="mb-1 block text-[12px] text-text-muted">Repository name</label>
             <input
               autoFocus
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="my-diagrams"
-              className="mb-2 w-full rounded-[8px] border border-border px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+              className="mb-2 w-full rounded-lg border border-border bg-white px-3 py-1.5 text-[13px] outline-none focus:border-accent"
             />
             <label className="mb-3 flex items-center gap-2 text-[12px] text-text-muted">
               <input
                 type="checkbox"
                 checked={newPrivate}
                 onChange={(e) => setNewPrivate(e.target.checked)}
-                className="accent-[#E2603B]"
+                className="accent-accent"
               />
               Private repository
             </label>
-            {createErr && <div className="mb-2 rounded-[8px] bg-accent-weak px-3 py-2 text-[12px] text-accent">GitHub: {createErr}</div>}
+            {createErr && <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-danger">{createErr}</div>}
             <div className="flex justify-end gap-2">
               <Button onClick={() => setCreating(false)}>Cancel</Button>
-              <Button variant="primary" onClick={() => void doCreate()} disabled={!newName.trim() || createBusy}>
-                {createBusy ? "Creating…" : "Create"}
+              <Button variant="primary" loading={createBusy} loadingText="Creating…" onClick={() => void doCreate()} disabled={!newName.trim()}>
+                Create
               </Button>
             </div>
           </div>
         )}
 
-        {error && <div className="mb-3 rounded-[8px] bg-accent-weak px-3 py-2 text-[12px] text-accent">GitHub: {error}</div>}
+        {error && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-danger">{error}</div>}
 
         <div className="scroll-thin max-h-[50vh] space-y-1 overflow-y-auto">
           {loading && <div className="py-3 text-center text-[12px] text-text-faint">Loading…</div>}
@@ -145,7 +145,7 @@ export function RepoPicker() {
             <button
               key={`${r.owner}/${r.name}`}
               onClick={() => select(r)}
-              className="flex w-full items-center justify-between rounded-[8px] border border-border px-3 py-2 text-left hover:border-border-strong hover:bg-surface-2"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition hover:bg-surface-2"
             >
               <span className="font-mono text-[13px] text-text">
                 {r.owner}/<span className="font-medium">{r.name}</span>

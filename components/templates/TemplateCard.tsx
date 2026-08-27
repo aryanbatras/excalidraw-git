@@ -13,7 +13,7 @@ export function TemplateCard({
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col overflow-hidden rounded-xl border border-border bg-white text-left transition hover:shadow-md hover:border-accent/40"
+      className="group flex flex-col overflow-hidden rounded-xl bg-white text-left transition hover:shadow-md"
     >
       {/* Thumbnail placeholder */}
       <div className="relative flex h-28 items-center justify-center bg-gradient-to-br from-accent/5 to-accent/10 text-3xl">

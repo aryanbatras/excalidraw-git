@@ -14,7 +14,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="w-[340px] rounded-2xl border border-border bg-white p-5 shadow-xl"
+        className="w-[340px] rounded-2xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-[15px] font-semibold text-text">Settings</h2>
@@ -60,7 +60,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Keyboard shortcuts */}
-        <div className="mt-5 border-t border-border pt-4">
+        <div className="mt-5 border-t border-border/50 pt-4">
           <h3 className="mb-2 text-[12px] font-medium text-text-muted">Keyboard shortcuts</h3>
           <div className="space-y-1.5 text-[12px]">
             <Row keys="⌘ / Ctrl + S" action="Save" />
@@ -70,7 +70,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
 
         <button
           onClick={onClose}
-          className="mt-5 w-full rounded-xl border border-border py-2 text-[13px] font-medium text-text transition hover:bg-surface-2"
+          className="mt-5 w-full rounded-xl bg-surface py-2.5 text-[13px] font-medium text-text transition hover:bg-surface-2"
         >
           Done
         </button>

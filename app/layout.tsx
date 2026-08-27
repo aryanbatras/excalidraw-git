@@ -1,21 +1,33 @@
 import type { Metadata } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
+import { Assistant } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
 import "./globals.css";
 
+const assistant = Assistant({
+  subsets: ["latin"],
+  variable: "--font-assistant",
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains",
+  weight: ["400", "500"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Excalidraw Git",
-  description: "Your Excalidraw, backed by Git.",
+  description: "Your Excalidraw, backed by GitHub.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`${assistant.variable} ${jetbrains.variable}`}>
       <head>
         <script
-          // Excalidraw fetches its hand-drawn fonts from this base path.
-          // We copied node_modules/@excalidraw/excalidraw/dist/prod/fonts -> public/fonts.
           dangerouslySetInnerHTML={{
             __html: `window.EXCALIDRAW_ASSET_PATH = "/";`,
           }}

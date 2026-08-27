@@ -67,11 +67,11 @@ export function TopBar({
   const fileName = selectedPath ? selectedPath.split("/").pop() : null;
 
   return (
-    <header className="flex h-11 items-center gap-2 border-b border-border bg-surface px-3">
+    <header className="flex h-12 items-center gap-2 bg-white px-3">
       <button
         onClick={onChangeRepo}
         title="Change repository"
-        className="flex items-center gap-1.5 rounded-[8px] px-2 py-1 font-mono text-[12px] text-text-muted hover:bg-surface-2 hover:text-text"
+        className="flex items-center gap-1.5 rounded-[6px] px-2 py-1 font-mono text-[12px] text-text-muted hover:bg-surface-2 hover:text-text"
       >
         <ArrowLeft size={14} />
         {repo.owner}/{repo.repo}
@@ -108,7 +108,7 @@ export function TopBar({
         </Button>
         {newOpen && (
           <div
-            className="absolute right-0 z-40 mt-1 w-44 rounded-[10px] border border-border bg-white py-1 shadow-[0_4px_16px_rgba(24,24,27,0.12)]"
+            className="absolute right-0 z-40 mt-1 w-44 rounded-xl bg-white py-1 shadow-[0_4px_24px_rgba(0,0,0,0.1)]"
             onMouseLeave={() => setNewOpen(false)}
           >
             {TEMPLATES.map((t) => (
@@ -160,7 +160,7 @@ export function TopBar({
         </IconButton>
         {historyOpen && (
           <div
-            className="absolute right-0 z-40 mt-1 w-72 rounded-[10px] border border-border bg-white py-1 shadow-[0_4px_16px_rgba(24,24,27,0.12)]"
+            className="absolute right-0 z-40 mt-1 w-72 rounded-xl bg-white py-1 shadow-[0_4px_24px_rgba(0,0,0,0.1)]"
             onMouseLeave={() => setHistoryOpen(false)}
           >
             <div className="border-b border-border px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-text-faint">
@@ -189,7 +189,7 @@ export function TopBar({
                       setHistoryOpen(false);
                       onRestore(c.sha);
                     }}
-                    className="shrink-0 rounded-[6px] border border-border px-2 py-1 text-[12px] text-text-muted hover:bg-white hover:text-text"
+                    className="shrink-0 rounded-[6px] px-2 py-1 text-[12px] text-text-muted hover:bg-surface-2 hover:text-text"
                   >
                     Restore
                   </button>
@@ -215,7 +215,7 @@ export function TopBar({
         </IconButton>
         {menuOpen && (
           <div
-            className="absolute right-0 z-40 mt-1 w-40 rounded-[10px] border border-border bg-white py-1 shadow-[0_4px_16px_rgba(24,24,27,0.12)]"
+            className="absolute right-0 z-40 mt-1 w-40 rounded-xl bg-white py-1 shadow-[0_4px_24px_rgba(0,0,0,0.1)]"
             onMouseLeave={() => setMenuOpen(false)}
           >
             <button

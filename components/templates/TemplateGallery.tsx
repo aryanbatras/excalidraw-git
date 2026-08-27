@@ -46,7 +46,7 @@ export function TemplateGallery({
       <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col border-l border-border bg-white shadow-xl">
+      <div className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col bg-white shadow-[-8px_0_40px_rgba(0,0,0,0.08)]">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           <h2 className="flex-1 text-[15px] font-semibold text-text">Templates</h2>
@@ -65,7 +65,7 @@ export function TemplateGallery({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search templates…"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-[13px] text-text outline-none placeholder:text-text-faint focus:border-accent"
+            className="w-full rounded-xl bg-surface px-3 py-2 text-[13px] text-text outline-none placeholder:text-text-faint focus:ring-2 focus:ring-accent/30"
           />
         </div>
 
@@ -118,7 +118,7 @@ export function TemplateGallery({
           onClick={() => setSelectedTemplate(null)}
         >
           <div
-            className="w-[340px] rounded-2xl border border-border bg-white p-5 shadow-xl"
+            className="w-[340px] rounded-2xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-[15px] font-semibold text-text">
@@ -134,7 +134,7 @@ export function TemplateGallery({
                   setSelectedTemplate(null);
                   onClose();
                 }}
-                className="rounded-xl border border-border bg-white px-4 py-2.5 text-left text-[13px] font-medium text-text transition hover:border-accent/40 hover:shadow-sm"
+                className="rounded-xl bg-surface px-4 py-3 text-left text-[13px] font-medium text-text transition hover:shadow-sm"
               >
                 Append to current file
                 <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
@@ -147,7 +147,7 @@ export function TemplateGallery({
                   setSelectedTemplate(null);
                   onClose();
                 }}
-                className="rounded-xl border border-border bg-white px-4 py-2.5 text-left text-[13px] font-medium text-text transition hover:border-accent/40 hover:shadow-sm"
+                className="rounded-xl bg-surface px-4 py-3 text-left text-[13px] font-medium text-text transition hover:shadow-sm"
               >
                 Create new file
                 <span className="mt-0.5 block text-[11px] font-normal text-text-muted">

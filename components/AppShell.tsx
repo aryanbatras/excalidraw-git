@@ -337,8 +337,8 @@ export function AppShell() {
         onRestore={restoreVersion}
       />
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[260px] shrink-0 flex-col border-r border-border bg-surface">
-          <div className="border-b border-border px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-text-faint">
+        <aside className="flex w-[260px] shrink-0 flex-col bg-surface shadow-[4px_0_24px_rgba(0,0,0,0.03)]">
+          <div className="px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-text-faint">
             Files
           </div>
           <FileTree

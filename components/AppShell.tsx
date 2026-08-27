@@ -48,12 +48,6 @@ export function AppShell() {
   const onApiReady = useCallback((api: ExcalidrawImperativeAPI | null) => {
     excalidrawRef.current = api;
   }, []);
-
-  // Excalidraw never fires excalidrawAPI(null) on unmount; clear the ref when
-  // the editor remounts for another file so stale APIs aren't used for appends.
-  useEffect(() => {
-    excalidrawRef.current = null;
-  }, [current?.path]);
   const registerSave = useCallback((fn: (() => void) | null) => {
     saveRef.current = fn;
   }, []);
@@ -118,6 +112,10 @@ export function AppShell() {
     async (path: string) => {
       if (!repo) return;
       const seq = ++loadSeq.current;
+      // A different file is about to replace the editor; drop the old canvas
+      // API immediately (Excalidraw never fires excalidrawAPI(null) on unmount).
+      // For the same path the editor does NOT remount, so keep the current API.
+      if (useStore.getState().selectedPath !== path) excalidrawRef.current = null;
       setLoadingFile(true);
       setSelectedPath(path);
       setRecovered(null);

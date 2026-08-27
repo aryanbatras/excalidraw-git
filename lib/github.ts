@@ -192,15 +192,6 @@ export async function listCommits(
   }));
 }
 
-// ---- Committer identity ---------------------------------------------------
-
-async function getCommitter(token: string): Promise<{ name: string; email: string }> {
-  const octokit = getOctokit(token);
-  const { data } = await octokit.rest.users.getAuthenticated();
-  const login = data.login;
-  return { name: data.name || login, email: `${login}@users.noreply.github.com` };
-}
-
 // ---- Write core (Git Database API) ----------------------------------------
 
 type TreeOp =
@@ -232,8 +223,6 @@ export async function commitFiles(
   message: string,
 ): Promise<{ commitSha: string }> {
   const octokit = getOctokit(token);
-  const committer = await getCommitter(token);
-  const author = { name: committer.name, email: committer.email };
 
   // Upload blobs once (content-addressed, immutable — reusable on retry).
   const blobs = await Promise.all(
@@ -266,8 +255,6 @@ export async function commitFiles(
       message,
       tree: createdTree.data.sha,
       parents: baseSha ? [baseSha] : [],
-      author,
-      committer,
     });
     if (baseSha) {
       await octokit.rest.git.updateRef({
@@ -305,8 +292,6 @@ export async function deleteFile(
   message: string,
 ): Promise<{ commitSha: string }> {
   const octokit = getOctokit(token);
-  const committer = await getCommitter(token);
-  const author = { name: committer.name, email: committer.email };
 
   const ref = await octokit.rest.git.getRef({
     owner: repo.owner,
@@ -328,8 +313,6 @@ export async function deleteFile(
     message,
     tree: createdTree.data.sha,
     parents: [baseSha],
-    author,
-    committer,
   });
   await octokit.rest.git.updateRef({
     owner: repo.owner,
@@ -350,8 +333,6 @@ export async function renameFile(
   message: string,
 ): Promise<{ commitSha: string }> {
   const octokit = getOctokit(token);
-  const committer = await getCommitter(token);
-  const author = { name: committer.name, email: committer.email };
 
   const ref = await octokit.rest.git.getRef({
     owner: repo.owner,
@@ -376,8 +357,6 @@ export async function renameFile(
     message,
     tree: createdTree.data.sha,
     parents: [baseSha],
-    author,
-    committer,
   });
   await octokit.rest.git.updateRef({
     owner: repo.owner,

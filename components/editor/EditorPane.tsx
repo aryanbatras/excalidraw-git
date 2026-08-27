@@ -134,9 +134,11 @@ export function EditorPane({
 
   // Unmount (file-switch): flush any edit still inside the debounce window so
   // nothing is lost and the global auto-save can pick this file up immediately.
+  // Also drop the live canvas API — Excalidraw never fires excalidrawAPI(null).
   useEffect(() => {
     return () => {
       if (pendingEdit.current) flushEdit(true);
+      onApiReady?.(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);

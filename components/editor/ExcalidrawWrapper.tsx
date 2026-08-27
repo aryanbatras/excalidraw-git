@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 import { useRef, useCallback, type ReactNode } from "react";
 import "@excalidraw/excalidraw/index.css";
+import { loadLibraryFromBlob } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useStore } from "@/lib/store";
 import { LIBRARIES } from "@/lib/libraries/registry";
 
@@ -19,18 +21,6 @@ const Excalidraw = dynamic(
   { ssr: false, loading: () => <EditorSkeleton /> },
 );
 
-type Api = {
-  getSceneElements?: () => unknown[];
-  getAppState?: () => unknown;
-  getFiles?: () => unknown;
-  updateScene?: (s: unknown) => void;
-  updateLibrary?: (opts: {
-    libraryItems: unknown[];
-    merge?: boolean;
-    prompt?: boolean;
-  }) => Promise<unknown>;
-};
-
 export function ExcalidrawStage({
   initialData,
   path,
@@ -40,41 +30,28 @@ export function ExcalidrawStage({
   initialData: Record<string, unknown>;
   path: string;
   onChange: (elements: unknown, appState: unknown, files: unknown) => void;
-  onApiReady?: (api: Api | null) => void;
+  onApiReady?: (api: ExcalidrawImperativeAPI | null) => void;
 }) {
-  const apiRef = useRef<Api | null>(null);
+  const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const loadedLibs = useRef(new Set<string>());
   const enabledLibraries = useStore((s) => s.enabledLibraries);
 
   const loadLibraries = useCallback(
-    async (api: Api) => {
+    async (api: ExcalidrawImperativeAPI) => {
       for (const libId of enabledLibraries) {
         if (loadedLibs.current.has(libId)) continue;
         const meta = LIBRARIES.find((l) => l.id === libId);
         if (!meta) continue;
         try {
           const res = await fetch(meta.file);
-          if (!res.ok) continue;
-          const lib = await res.json();
-          // Support both v1 (library) and v2 (libraryItems) formats
-          const items = lib.libraryItems ?? lib.library ?? [];
-          if (items.length === 0) continue;
-          // Normalize v1 format: each item in v1 is an array of elements
-          const normalized = items.map((item: any, i: number) => {
-            if (Array.isArray(item)) {
-              return {
-                status: "published",
-                id: `lib-${libId}-${i}`,
-                name: `Item ${i + 1}`,
-                elements: item,
-              };
-            }
-            return item;
-          });
-          await api.updateLibrary?.({
-            libraryItems: normalized,
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          const items = await loadLibraryFromBlob(blob, "published");
+          await api.updateLibrary({
+            libraryItems: items,
             merge: true,
             prompt: false,
+            openLibraryMenu: false,
           });
           loadedLibs.current.add(libId);
         } catch (err) {
@@ -86,13 +63,10 @@ export function ExcalidrawStage({
   );
 
   const handleAPI = useCallback(
-    (api: unknown) => {
-      const typed = api as Api;
-      apiRef.current = typed;
-      onApiReady?.(typed);
-      if (typed) {
-        void loadLibraries(typed);
-      }
+    (api: ExcalidrawImperativeAPI) => {
+      apiRef.current = api;
+      onApiReady?.(api);
+      void loadLibraries(api);
     },
     [onApiReady, loadLibraries],
   );

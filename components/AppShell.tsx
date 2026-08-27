@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useStore } from "@/lib/store";
 import { RepoPicker } from "@/components/RepoPicker";
 import { FileTree } from "@/components/sidebar/FileTree";
@@ -14,7 +15,6 @@ import type { GalleryTemplate } from "@/lib/templates/gallery";
 import { sceneToBase64 } from "@/lib/excalidraw-serialize";
 import { loadScene, saveScene, clearScene } from "@/lib/idb";
 import { TemplateGallery } from "@/components/templates/TemplateGallery";
-import { appendTemplateToScene } from "@/components/templates/appendTemplate";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 
 // Editor must never load on the server (Excalidraw touches window at import).
@@ -41,6 +41,17 @@ export function AppShell() {
   const [recovered, setRecovered] = useState<{ path: string; remote: Scene } | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   const saveRef = useRef<(() => void) | null>(null);
+  // Live Excalidraw imperative API — needed to push template-append changes onto the canvas.
+  const excalidrawRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const onApiReady = useCallback((api: ExcalidrawImperativeAPI | null) => {
+    excalidrawRef.current = api;
+  }, []);
+
+  // Excalidraw never fires excalidrawAPI(null) on unmount; clear the ref when
+  // the editor remounts for another file so stale APIs aren't used for appends.
+  useEffect(() => {
+    excalidrawRef.current = null;
+  }, [current?.path]);
   const registerSave = useCallback((fn: (() => void) | null) => {
     saveRef.current = fn;
   }, []);
@@ -68,7 +79,7 @@ export function AppShell() {
         if (!isDirty) continue;
         const cached = state.sceneCache[path];
         if (!cached) continue;
-        if (path === current?.path) {
+        if (path === state.selectedPath) {
           saveRef.current?.();
           continue;
         }
@@ -78,19 +89,24 @@ export function AppShell() {
           const res = await fetch(`/api/commit?${qs}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path, content: btoa(JSON.stringify(cached.scene)), expectedBaseSha: cached.sha }),
+            body: JSON.stringify({
+              files: [{ path, content: sceneToBase64(cached.scene) }],
+              message: `auto-save: ${path}`,
+            }),
           });
           if (res.ok) {
             const { commitSha } = await res.json() as { commitSha: string };
             state.markDirty(path, false);
             state.cacheScene(path, cached.scene, commitSha);
             state.setHead(`${repo.owner}/${repo.repo}`, commitSha);
+          } else {
+            state.markDirty(path, true);
           }
         } catch { /* best-effort */ }
       }
     }, autoSaveInterval * 1000);
     return () => clearInterval(id);
-  }, [autoSaveEnabled, autoSaveInterval, repo, current?.path]);
+  }, [autoSaveEnabled, autoSaveInterval, repo]);
 
   useEffect(() => {
     if (session?.user?.login) setLogin(session.user.login);
@@ -267,49 +283,80 @@ export function AppShell() {
     }
   }
 
+  // Create a brand-new file directly from a template (no modal — the gallery is the create UI).
+  async function createFromTemplate(template: GalleryTemplate) {
+    if (!repo) return;
+    const res = await fetch(template.file);
+    if (!res.ok) throw new Error(`Failed to load template (${res.status})`);
+    const tplScene = (await res.json()) as Scene;
+    const safe = (template.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "template");
+    const dir = selectedPath && selectedPath.includes("/")
+      ? selectedPath.slice(0, selectedPath.lastIndexOf("/"))
+      : "";
+    const existing = new Set((useStore.getState().dirCache[dir] ?? []).map((e) => e.name));
+    let base = safe;
+    let n = 1;
+    while (existing.has(`${base}.excalidraw`)) {
+      n += 1;
+      base = `${safe}-${n}`;
+    }
+    const path = dir ? `${dir}/${base}.excalidraw` : `${base}.excalidraw`;
+    const b64 = sceneToBase64(tplScene);
+    const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
+    const cRes = await fetch(`/api/file?${qs}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, content: b64 }),
+    });
+    if (!cRes.ok) throw new Error((await cRes.text()) || `Failed (${cRes.status})`);
+    invalidateDir(dir);
+    void clearScene(`${repo.owner}/${repo.repo}/${path}`);
+    await openFile(path);
+    setStatus("saved", `Created "${template.name}"`);
+  }
+
   async function handleTemplateSelect(template: GalleryTemplate, mode: "append" | "new") {
     if (!repo) return;
     if (mode === "new") {
-      // Open new-file modal pre-filled with template name
-      const safe = template.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      setNewName(safe);
-      const dir = selectedPath && selectedPath.includes("/")
-        ? selectedPath.slice(0, selectedPath.lastIndexOf("/"))
-        : "";
-      setNewState({ dir, template: "blank" as TemplateId });
-      // Fetch template file and write it as a new file
       try {
-        const res = await fetch(template.file);
-        const tplScene = (await res.json()) as Scene;
-        const path = dir ? `${dir}/${safe}.excalidraw` : `${safe}.excalidraw`;
-        const b64 = sceneToBase64(tplScene);
-        const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
-        const cRes = await fetch(`/api/file?${qs}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path, content: b64 }),
-        });
-        if (!cRes.ok) throw new Error((await cRes.text()) || `Failed (${cRes.status})`);
-        invalidateDir(dir);
-        void clearScene(`${repo.owner}/${repo.repo}/${path}`);
-        await openFile(path);
+        await createFromTemplate(template);
       } catch (e) {
         setStatus("error", (e as Error).message);
       }
       return;
     }
-    // Append mode: merge template elements into current scene
+    // Append mode: merge template elements into the LIVE canvas.
     if (!current) {
       setStatus("error", "Open a file first to append template elements.");
       return;
     }
+    const api = excalidrawRef.current;
+    if (!api) {
+      setStatus("error", "Editor is still loading — try again in a moment.");
+      return;
+    }
     try {
       const res = await fetch(template.file);
-      const tplScene = (await res.json()) as { elements: any[] };
-      const merged = appendTemplateToScene(current.scene.elements ?? [], tplScene.elements ?? []);
-      const updatedScene: Scene = { ...current.scene, elements: merged };
-      setCurrent({ ...current, scene: updatedScene });
-      cacheScene(current.path, updatedScene, current.sha);
+      if (!res.ok) throw new Error(`Failed to load template (${res.status})`);
+      const tplScene = (await res.json()) as Scene;
+      // Use the canvas's current elements, not the mount-time snapshot, so any
+      // unsaved edits before the append are preserved.
+      const live = (api.getSceneElements?.() ?? current.scene.elements ?? []) as unknown[];
+      const { appendTemplateToScene } = await import("@/components/templates/appendTemplate");
+      const merged = appendTemplateToScene(live, tplScene.elements ?? []);
+      if (merged.length === 0) {
+        setStatus("error", "Template contains no drawable elements.");
+        return;
+      }
+      // 1. Push the merged elements into the live canvas.
+      api.updateScene({ elements: merged as never });
+      // 2. Keep every mirror in sync: React state, store cache, IndexedDB.
+      const mergedScene: Scene = { ...current.scene, elements: merged };
+      setCurrent({ ...current, scene: mergedScene });
+      cacheScene(current.path, mergedScene, current.sha);
+      void saveScene(`${repo.owner}/${repo.repo}/${current.path}`, mergedScene, current.sha);
+      // 3. Mark dirty so save/Cmd+S/auto-save pick up the appended content.
+      markDirty(current.path, true);
       setStatus("saved", `Appended "${template.name}" to canvas`);
     } catch (e) {
       setStatus("error", (e as Error).message);
@@ -395,6 +442,7 @@ export function AppShell() {
                 initialScene={current.scene}
                 initialSha={current.sha}
                 registerSave={registerSave}
+                onApiReady={onApiReady}
               />
             </div>
           ) : loadingFile ? (

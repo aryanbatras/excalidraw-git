@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { serializeAsJSON } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { ExcalidrawStage } from "./ExcalidrawWrapper";
 import { useStore } from "@/lib/store";
 import { saveScene } from "@/lib/idb";
 import { sceneToBase64 } from "@/lib/excalidraw-serialize";
 import type { RepoRef, Scene } from "@/lib/types";
-
-type Api = { getSceneElements?: () => unknown[]; getAppState?: () => unknown; getFiles?: () => unknown };
 
 export function EditorPane({
   repo,
@@ -16,12 +15,14 @@ export function EditorPane({
   initialScene,
   initialSha,
   registerSave,
+  onApiReady,
 }: {
   repo: RepoRef;
   path: string;
   initialScene: Scene;
   initialSha: string;
   registerSave: (fn: (() => void) | null) => void;
+  onApiReady?: (api: ExcalidrawImperativeAPI | null) => void;
 }) {
   const cacheScene = useStore((s) => s.cacheScene);
   const markDirty = useStore((s) => s.markDirty);
@@ -130,6 +131,7 @@ export function EditorPane({
       initialData={initialScene as unknown as Record<string, unknown>}
       path={path}
       onChange={handleChange}
+      onApiReady={onApiReady}
     />
   );
 }

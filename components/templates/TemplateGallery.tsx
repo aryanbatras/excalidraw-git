@@ -118,7 +118,7 @@ export function TemplateGallery({
           onClick={() => setSelectedTemplate(null)}
         >
           <div
-            className="w-[340px] rounded-2xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
+            className="w-[340px] rounded-xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-[15px] font-semibold text-text">

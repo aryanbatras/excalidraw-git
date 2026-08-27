@@ -17,7 +17,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="w-[380px] max-h-[80vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
+        className="w-[380px] max-h-[80vh] overflow-y-auto rounded-xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-[15px] font-semibold text-text">Settings</h2>

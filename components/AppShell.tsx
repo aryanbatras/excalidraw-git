@@ -403,7 +403,7 @@ export function AppShell() {
           />
         </aside>
 
-        <main className="relative flex min-w-0 flex-1 flex-col bg-white">
+        <main className="relative flex min-w-0 flex-1 flex-col bg-white shadow-[inset_0_0_40px_rgba(0,0,0,0.03)]">
           {recovered && current && recovered.path === current.path && (
             <div className="flex items-center gap-3 border-b border-status-dirty/30 bg-accent-weak px-3 py-2 text-[13px] text-text">
               <span className="flex-1">

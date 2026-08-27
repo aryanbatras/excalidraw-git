@@ -100,7 +100,7 @@ export function RepoPicker() {
             setCreateErr(null);
             setCreating((v) => !v);
           }}
-          className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border-strong px-3 py-2.5 text-[13px] font-medium text-text transition hover:border-accent hover:text-accent"
+          className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-surface px-3 py-2.5 text-[13px] font-medium text-text transition hover:bg-surface-2 hover:text-accent"
         >
           <Plus size={15} /> New repository
         </button>

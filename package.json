@@ -13,14 +13,12 @@
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
     "@phosphor-icons/react": "^2.1.10",
-    "geist": "^1.7.2",
     "idb": "^8.0.3",
     "next": "16.3.3",
     "next-auth": "^5.0.0-beta.32",
     "octokit": "^5.0.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "swr": "^2.5.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

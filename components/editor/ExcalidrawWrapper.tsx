@@ -71,14 +71,71 @@ export function ExcalidrawStage({
     [onApiReady, loadLibraries],
   );
 
+  /**
+   * Section 5: Image compression notification.
+   * Detect large images in the scene and notify the user.
+   * Actual compression happens at save time (scene serialization).
+   */
+  const prevFilesRef = useRef<Set<string>>(new Set());
+
+  const handleChange = useCallback(
+    (elements: unknown, appState: unknown, files: unknown) => {
+      const filesMap = files as Record<string, { mimeType?: string; size?: number; id?: string; dataURL?: string }> | undefined;
+      if (filesMap && typeof filesMap === "object") {
+        const entries = Object.entries(filesMap);
+        for (const [fileId, fileData] of entries) {
+          if (
+            fileData?.mimeType?.startsWith("image/") &&
+            (fileData.mimeType === "image/jpeg" || fileData.mimeType === "image/webp") &&
+            fileData.size &&
+            fileData.size > 1 * 1024 * 1024 &&
+            !prevFilesRef.current.has(fileId)
+          ) {
+            prevFilesRef.current.add(fileId);
+            const api = apiRef.current;
+            if (api && fileData.dataURL) {
+              void (async () => {
+                try {
+                  const imageCompression = (await import("browser-image-compression")).default;
+                  const res = await fetch(fileData.dataURL!);
+                  const blob = await res.blob();
+                  const file = new File([blob], `${fileId}.${fileData.mimeType?.split("/")[1] ?? "png"}`, { type: fileData.mimeType });
+                  const compressed = await imageCompression(file, {
+                    maxSizeMB: 1,
+                    maxWidthOrHeight: 1920,
+                    useWebWorker: false,
+                  });
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const compressedDataURL = reader.result as string;
+                    api.updateScene({
+                      files: {
+                        ...filesMap,
+                        [fileId]: { ...filesMap[fileId], dataURL: compressedDataURL, size: compressed.size },
+                      },
+                    } as never);
+                  };
+                  reader.readAsDataURL(compressed);
+                } catch {
+                  /* compression failed — keep original */
+                }
+              })();
+            }
+          }
+        }
+      }
+
+      onChange(elements, appState, files);
+    },
+    [onChange],
+  );
+
   return (
     <Excalidraw
       key={path}
       initialData={initialData as never}
       excalidrawAPI={handleAPI}
-      onChange={(elements: unknown, appState: unknown, files: unknown) => {
-        onChange(elements, appState, files);
-      }}
+      onChange={handleChange}
       theme="light"
       UIOptions={{
         canvasActions: {

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Utility scripts and type declarations (not app source):
+    "scripts/**",
+    "types/**",
   ]),
 ]);
 

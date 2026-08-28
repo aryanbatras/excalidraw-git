@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import type { GalleryTemplate } from "@/lib/templates/gallery";
+import { TemplatePreview } from "./TemplatePreview";
 
 export function TemplateCard({
   template,
@@ -12,17 +13,16 @@ export function TemplateCard({
   onClick: () => void;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
+
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col overflow-hidden rounded-xl bg-white text-left transition hover:shadow-md"
+      className="group flex flex-col overflow-hidden rounded-xl bg-white text-left shadow-sm transition hover:shadow-lg"
     >
-      {/* Thumbnail (400×300 preview); falls back to a plain-text tile if missing */}
-      <div className="relative flex h-28 items-center justify-center overflow-hidden bg-gradient-to-br from-accent/5 to-accent/10">
+      {/* Thumbnail — big and prominent */}
+      <div className="relative flex h-44 items-center justify-center overflow-hidden bg-gradient-to-br from-accent/5 to-accent/10">
         {imgFailed ? (
-          <span className="px-1 text-center text-[12px] font-medium leading-tight text-text-muted">
-            {template.name}
-          </span>
+          <TemplatePreview file={template.file} />
         ) : (
           <Image
             src={template.thumbnail}
@@ -35,16 +35,20 @@ export function TemplateCard({
           />
         )}
       </div>
-      <div className="flex flex-1 flex-col p-2.5">
-        <span className="text-[12px] font-medium text-text">{template.name}</span>
-        <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-text-muted">
+
+      {/* Info */}
+      <div className="flex flex-1 flex-col p-3.5">
+        <span className="text-[14px] font-semibold text-text">
+          {template.name}
+        </span>
+        <span className="mt-1 text-[12px] leading-snug text-text-muted">
           {template.description}
         </span>
-        <div className="mt-auto flex flex-wrap gap-1 pt-2">
+        <div className="mt-auto flex flex-wrap gap-1 pt-2.5">
           {template.tags.slice(0, 3).map((t) => (
             <span
               key={t}
-              className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-muted"
+              className="rounded-full bg-accent-weak px-2 py-0.5 text-[10px] font-medium text-accent"
             >
               {t}
             </span>

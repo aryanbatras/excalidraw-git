@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { X } from "@phosphor-icons/react/dist/ssr";
 import {
   GALLERY_TEMPLATES,
@@ -24,6 +24,27 @@ export function TemplateGallery({
   const [activeCategory, setActiveCategory] = useState<TemplateCategory | "all">("all");
   const [search, setSearch] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<GalleryTemplate | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Focus trap + Esc close
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (selectedTemplate) {
+          setSelectedTemplate(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, selectedTemplate]);
+
+  // Focus the dialog on mount
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
 
   const filtered = useMemo(() => {
     let list = GALLERY_TEMPLATES;
@@ -45,34 +66,39 @@ export function TemplateGallery({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
 
-      {/* Panel */}
-      <div className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col bg-white shadow-[-8px_0_40px_rgba(0,0,0,0.08)]">
+      {/* Centered dialog */}
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="fixed inset-4 z-50 mx-auto my-auto flex max-h-[85vh] max-w-[720px] flex-col rounded-2xl bg-white shadow-[0_16px_64px_rgba(0,0,0,0.16)] outline-none sm:inset-auto sm:top-[8vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-          <h2 className="flex-1 text-[15px] font-semibold text-text">Templates</h2>
+        <div className="flex items-center gap-3 border-b border-border px-6 py-4">
+          <h2 className="flex-1 text-[16px] font-semibold text-text">Templates</h2>
           <button
             onClick={onClose}
-            className="grid h-7 w-7 place-items-center rounded-lg text-text-muted transition hover:bg-surface-2 hover:text-text"
+            className="grid h-8 w-8 place-items-center rounded-lg text-text-muted transition hover:bg-surface-2 hover:text-text"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
         {/* Search */}
-        <div className="border-b border-border px-4 py-2.5">
+        <div className="border-b border-border px-6 py-3">
           <input
             autoFocus
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search templates…"
-            className="w-full rounded-xl bg-surface px-3 py-2 text-[13px] text-text outline-none placeholder:text-text-faint focus:ring-2 focus:ring-accent/30"
+            placeholder="Search templates..."
+            className="w-full rounded-xl bg-surface px-4 py-2.5 text-[13px] text-text outline-none placeholder:text-text-faint focus:ring-2 focus:ring-accent/30"
           />
         </div>
 
         {/* Category tabs */}
-        <div className="flex gap-1.5 overflow-x-auto border-b border-border px-4 py-2 scrollbar-none">
+        <div className="flex gap-1.5 overflow-x-auto border-b border-border px-6 py-2.5 scrollbar-none">
           <Tab
             active={activeCategory === "all"}
             onClick={() => setActiveCategory("all")}
@@ -90,12 +116,14 @@ export function TemplateGallery({
           ))}
         </div>
 
-        {/* Grid */}
-        <div className="flex-1 overflow-y-auto p-4">
+        {/* Big card grid */}
+        <div className="flex-1 overflow-y-auto p-6">
           {filtered.length === 0 ? (
-            <p className="py-12 text-center text-[13px] text-text-muted">No templates found.</p>
+            <p className="py-16 text-center text-[13px] text-text-muted">
+              No templates found.
+            </p>
           ) : (
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 gap-4">
               {filtered.map((t) => (
                 <TemplateCard
                   key={t.id}
@@ -108,19 +136,19 @@ export function TemplateGallery({
         </div>
 
         {/* Footer count */}
-        <div className="border-t border-border px-4 py-2 text-[11px] text-text-muted">
+        <div className="border-t border-border px-6 py-2.5 text-[11px] text-text-muted">
           {filtered.length} template{filtered.length !== 1 && "s"}
         </div>
       </div>
 
-      {/* Append/New choice modal */}
+      {/* Append/New choice — inline in the dialog overlay */}
       {selectedTemplate && (
         <div
           className="fixed inset-0 z-[60] grid place-items-center bg-black/30"
           onClick={() => setSelectedTemplate(null)}
         >
           <div
-            className="w-[340px] rounded-xl bg-white p-5 shadow-[0_8px_40px_rgba(0,0,0,0.12)]"
+            className="w-[360px] rounded-2xl bg-white p-6 shadow-[0_16px_64px_rgba(0,0,0,0.16)]"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-[15px] font-semibold text-text">

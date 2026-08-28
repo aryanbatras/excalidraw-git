@@ -147,6 +147,38 @@ export async function getFileScene(
   return { scene: JSON.parse(json) as Scene, sha: fileSha, size };
 }
 
+// Raw file bytes (any file type). Uses the Git Blob API so large/binary files
+// are fully delivered regardless of the 1MB getContent limit.
+export async function getFileContent(
+  token: string,
+  repo: RepoRef,
+  path: string,
+  ref?: string,
+): Promise<{
+  content: Buffer;
+  sha: string;
+  size: number;
+}> {
+  const octokit = getOctokit(token);
+  const meta = await octokit.rest.repos.getContent({
+    owner: repo.owner,
+    repo: repo.repo,
+    ref: ref ?? repo.branch,
+    path,
+  });
+  if (Array.isArray(meta.data) || meta.data.type !== "file") {
+    throw new Error("Not a file");
+  }
+  const fileSha = meta.data.sha;
+  const size = "size" in meta.data ? meta.data.size : 0;
+  const blob = await octokit.rest.git.getBlob({
+    owner: repo.owner,
+    repo: repo.repo,
+    file_sha: fileSha,
+  });
+  return { content: Buffer.from(blob.data.content, "base64"), sha: fileSha, size };
+}
+
 // ---- Head (conflict check) ------------------------------------------------
 
 export async function getHead(token: string, repo: RepoRef): Promise<string> {

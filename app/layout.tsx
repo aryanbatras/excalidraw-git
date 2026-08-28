@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Assistant } from "next/font/google";
 import { JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import { SessionProvider } from "next-auth/react";
 import "./globals.css";
 
@@ -26,14 +27,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${assistant.variable} ${jetbrains.variable}`}>
-      <head>
-        <script
+      <head />
+      <body>
+        <Script
+          id="excalidraw-asset-path"
+          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `window.EXCALIDRAW_ASSET_PATH = "/";`,
           }}
         />
-      </head>
-      <body>
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

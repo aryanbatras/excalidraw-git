@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGithubToken } from "@/lib/auth-token";
-import { getFileScene, commitFiles, deleteFile, renameFile } from "@/lib/github";
+import { getFileScene, getFileContent, commitFiles, deleteFile, renameFile } from "@/lib/github";
+import { MIME_BY_EXT, classifyFile, fileExt } from "@/lib/fileTypes";
 import type { RepoRef } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ function parseRepo(req: NextRequest): RepoRef | null {
   return { owner, repo, branch };
 }
 
-// GET /api/file -> read scene
+// GET /api/file -> read scene (.excalidraw) or raw bytes (anything else)
 export async function GET(req: NextRequest) {
   const token = await getGithubToken(req);
   if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -22,6 +23,18 @@ export async function GET(req: NextRequest) {
   const ref = req.nextUrl.searchParams.get("ref") ?? undefined;
   if (!repo || !path) return NextResponse.json({ error: "missing params" }, { status: 400 });
   try {
+    if (classifyFile(path) !== "excalidraw") {
+      const { content, sha, size } = await getFileContent(token, repo, path, ref);
+      const mime = MIME_BY_EXT[fileExt(path)] ?? "application/octet-stream";
+      return new NextResponse(new Uint8Array(content), {
+        headers: {
+          "Content-Type": mime,
+          "X-File-Sha": sha,
+          "X-File-Size": String(size),
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
     const { scene, sha, size } = await getFileScene(token, repo, path, ref);
     return NextResponse.json({ sha, size, scene });
   } catch (e: unknown) {

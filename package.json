@@ -7,18 +7,24 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "thumbs": "node scripts/generate-thumbs.mjs",
-    "test": "node scripts/test-append.mjs && node scripts/test-serialize.mjs && node scripts/test-templates.mjs"
+    "thumbs": "node scripts/generate-thumbs.mjs && python3 scripts/thumbnails.py",
+    "test": "node scripts/test-append.mjs && node scripts/test-serialize.mjs && node scripts/test-templates.mjs && python3 scripts/thumbnails.py --validate"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
     "@phosphor-icons/react": "^2.1.10",
+    "browser-image-compression": "^2.0.2",
     "idb": "^8.0.3",
     "next": "16.3.3",
     "next-auth": "^5.0.0-beta.32",
     "octokit": "^5.0.5",
+    "pdfjs-dist": "^6.2.108",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
+    "react-pdf": "^10.5.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "remark-gfm": "^4.0.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
@@ -26,6 +32,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "sharp": "^0.35.4",

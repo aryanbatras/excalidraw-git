@@ -17,6 +17,8 @@ import { sceneToBase64 } from "@/lib/excalidraw-serialize";
 import { loadScene, saveScene, clearScene } from "@/lib/idb";
 import { TemplateGallery } from "@/components/templates/TemplateGallery";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
+import { FileViewer } from "@/components/viewer/FileViewer";
+import { classifyFile } from "@/lib/fileTypes";
 
 // Editor must never load on the server (Excalidraw touches window at import).
 const EditorPane = dynamic(
@@ -41,6 +43,8 @@ export function AppShell() {
   const [current, setCurrent] = useState<{ path: string; scene: Scene; sha: string } | null>(null);
   const [recovered, setRecovered] = useState<{ path: string; remote: Scene } | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
+  // Section 3: Instant file-switch feedback — track which file we're switching to
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   // Monotonic token: only the most recent openFile() request may write current state.
   const loadSeq = useRef(0);
   const saveRef = useRef<(() => void) | null>(null);
@@ -120,23 +124,43 @@ export function AppShell() {
     async (path: string) => {
       if (!repo) return;
       const seq = ++loadSeq.current;
+
+      // Section 3: Instant file-switch feedback
+      // Set switchingTo immediately (before any await) so the header + overlay update instantly.
+      setSwitchingTo(path);
+      setLoadingFile(true);
+
       // A different file is about to replace the editor; drop the old canvas
       // API immediately (Excalidraw never fires excalidrawAPI(null) on unmount).
       // For the same path the editor does NOT remount, so keep the current API.
       if (useStore.getState().selectedPath !== path) excalidrawRef.current = null;
-      setLoadingFile(true);
       setSelectedPath(path);
       setRecovered(null);
       try {
         // In-session switch: store cache already holds local edits → instant.
         const cached = getCachedLocal(path);
         if (cached?.scene) {
-          if (seq === loadSeq.current) setCurrent({ path, scene: cached.scene, sha: cached.sha });
+          if (seq === loadSeq.current) {
+            setCurrent({ path, scene: cached.scene, sha: cached.sha });
+            setSwitchingTo(null);
+          }
           return;
         }
         const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}&path=${encodeURIComponent(path)}`;
         const res = await fetch(`/api/file?${qs}`);
         if (!res.ok) throw new Error((await res.text()) || `Failed (${res.status})`);
+
+        // Check if this is a non-excalidraw file — if so, we don't need to parse as scene
+        const kind = classifyFile(path);
+        if (kind !== "excalidraw") {
+          // Non-excalidraw file — just mark as loaded, FileViewer handles the rest
+          if (seq === loadSeq.current) {
+            setCurrent(null); // No scene to display — FileViewer takes over
+            setSwitchingTo(null);
+          }
+          return;
+        }
+
         const data = (await res.json()) as { scene: Scene; sha: string };
         if (seq !== loadSeq.current) return; // a newer open superseded this one
         const key = `${repo.owner}/${repo.repo}/${path}`;
@@ -149,6 +173,7 @@ export function AppShell() {
         }
         if (seq !== loadSeq.current) return;
         setCurrent({ path, scene: sceneToUse, sha: data.sha });
+        setSwitchingTo(null);
         cacheScene(path, sceneToUse, data.sha);
         // record the branch head commit sha at load time (for conflict checks)
         try {
@@ -163,9 +188,15 @@ export function AppShell() {
           /* best-effort */
         }
       } catch (e) {
-        if (seq === loadSeq.current) setStatus("error", (e as Error).message);
+        if (seq === loadSeq.current) {
+          setStatus("error", (e as Error).message);
+          setSwitchingTo(null);
+        }
       } finally {
-        if (seq === loadSeq.current) setLoadingFile(false);
+        if (seq === loadSeq.current) {
+          setLoadingFile(false);
+          setSwitchingTo(null);
+        }
       }
     },
     [repo, setSelectedPath, cacheScene, getCachedLocal, setStatus, setHead],
@@ -269,29 +300,49 @@ export function AppShell() {
     }
   }
 
+  // Section 6: Non-destructive history restore
+  // Restores to the SAME file (no "-restored" copy) and appends a new history entry.
   async function restoreVersion(sha: string) {
     if (!repo || !selectedPath) return;
     try {
+      // 1. Fetch the checkpoint scene
       const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}&path=${encodeURIComponent(selectedPath)}&ref=${sha}`;
       const res = await fetch(`/api/file?${qs}`);
       if (!res.ok) throw new Error((await res.text()) || `Failed (${res.status})`);
       const data = (await res.json()) as { scene: Scene };
-      const dot = selectedPath.lastIndexOf(".excalidraw");
-      const restoredPath =
-        (dot >= 0 ? selectedPath.slice(0, dot) : selectedPath) + "-restored.excalidraw";
+
+      // 2. Get checkpoint position for the commit message
+      // (N = position in history list, newest = 1)
+      let checkpointNum = "?";
+      try {
+        const historyRes = await fetch(
+          `/api/history?owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}&path=${encodeURIComponent(selectedPath)}`,
+        );
+        if (historyRes.ok) {
+          const historyData = (await historyRes.json()) as { commits: Array<{ sha: string }> };
+          const idx = historyData.commits.findIndex((c) => c.sha === sha);
+          checkpointNum = idx >= 0 ? String(idx + 1) : "?";
+        }
+      } catch { /* best-effort */ }
+
+      // 3. Commit restored scene to the SAME path (not a new "-restored" file)
       const b64 = sceneToBase64(data.scene);
-      const cRes = await fetch(`/api/file?owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`, {
+      const cRes = await fetch(`/api/commit?owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: restoredPath, content: b64 }),
+        body: JSON.stringify({
+          files: [{ path: selectedPath, content: b64 }],
+          message: `Restore checkpoint #${checkpointNum}`,
+        }),
       });
-      if (!cRes.ok) throw new Error((await cRes.text()) || `Failed (${res.status})`);
-      const dir = restoredPath.includes("/")
-        ? restoredPath.slice(0, restoredPath.lastIndexOf("/"))
-        : "";
-      invalidateDir(dir);
-      await openFile(restoredPath);
-      setStatus("saved", "Restored version opened");
+      if (!cRes.ok) throw new Error((await cRes.text()) || `Failed (${cRes.status})`);
+      const { commitSha } = (await cRes.json()) as { commitSha: string };
+
+      // 4. Reload the file into the editor
+      cacheScene(selectedPath, data.scene, commitSha);
+      setCurrent({ path: selectedPath, scene: data.scene, sha: commitSha });
+      markDirty(selectedPath, false);
+      setStatus("saved", `Restored checkpoint #${checkpointNum}`);
     } catch (e) {
       setStatus("error", (e as Error).message);
     }
@@ -379,11 +430,17 @@ export function AppShell() {
 
   if (!repo) return <RepoPicker />;
 
+  // Determine which file kind is selected
+  const selectedKind = selectedPath ? classifyFile(selectedPath) : null;
+  const isExcalidrawFile = selectedKind === "excalidraw";
+
   return (
     <div className="flex h-[100dvh] flex-col">
       <TopBar
         repo={repo}
         selectedPath={selectedPath}
+        // Section 3: Pass switchingTo so the header shows the new file name immediately
+        switchingTo={switchingTo}
         onSave={() => saveRef.current?.()}
         onNew={(id) => {
           setNewName(id === "blank" ? "untitled" : id);
@@ -474,7 +531,21 @@ export function AppShell() {
               </Button>
             </div>
           )}
-          {current ? (
+
+          {/* Section 3: Instant file-switch overlay — shows immediately when switching */}
+          {switchingTo && (
+            <div className="absolute inset-0 z-20 grid place-items-center bg-white/80 backdrop-blur-[2px]">
+              <div className="flex flex-col items-center gap-3 text-[13px] text-text-muted">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent" />
+                <span>Opening {switchingTo.split("/").pop()}...</span>
+              </div>
+            </div>
+          )}
+
+          {/* Section 4: FileViewer for non-excalidraw files */}
+          {selectedPath && !isExcalidrawFile && !switchingTo ? (
+            <FileViewer repo={repo} path={selectedPath} />
+          ) : current ? (
             <div className="min-h-0 flex-1">
               <EditorPane
                 key={current.path}
@@ -486,14 +557,14 @@ export function AppShell() {
                 onApiReady={onApiReady}
               />
             </div>
-          ) : loadingFile ? (
-            <div className="grid flex-1 place-items-center text-[13px] text-text-faint">Opening…</div>
+          ) : loadingFile || switchingTo ? (
+            <div className="grid flex-1 place-items-center text-[13px] text-text-faint">Opening...</div>
           ) : (
             <div className="grid flex-1 place-items-center px-6 text-center">
               <div>
                 <p className="text-[14px] font-medium text-text">No diagram open</p>
                 <p className="mt-1 text-[13px] text-text-muted">
-                  Pick a <span className="font-mono">.excalidraw</span> file from the sidebar, or click “New” to start one.
+                  Pick a <span className="font-mono">.excalidraw</span> file from the sidebar, or click {'"'}New{'"'} to start one.
                 </p>
               </div>
             </div>
@@ -514,7 +585,7 @@ export function AppShell() {
           />
           <div className="flex justify-end gap-2">
             <Button onClick={() => setNewState(null)}>Cancel</Button>
-            <Button variant="primary" loading={creating} loadingText="Creating…" onClick={() => void createFile(newState.dir, newState.template)}>
+            <Button variant="primary" loading={creating} loadingText="Creating..." onClick={() => void createFile(newState.dir, newState.template)}>
               Create
             </Button>
           </div>
@@ -532,7 +603,7 @@ export function AppShell() {
           />
           <div className="flex justify-end gap-2">
             <Button onClick={() => setRenameEntry(null)}>Cancel</Button>
-            <Button variant="primary" loading={renaming} loadingText="Renaming…" onClick={() => void doRename()}>
+            <Button variant="primary" loading={renaming} loadingText="Renaming..." onClick={() => void doRename()}>
               Rename
             </Button>
           </div>
@@ -547,7 +618,7 @@ export function AppShell() {
           </p>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setDeleteEntry(null)}>Cancel</Button>
-            <Button variant="danger" loading={deleting} loadingText="Deleting…" onClick={() => void doDelete()}>
+            <Button variant="danger" loading={deleting} loadingText="Deleting..." onClick={() => void doDelete()}>
               Delete
             </Button>
           </div>

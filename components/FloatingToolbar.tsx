@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  List,
+  FolderOpen,
   FloppyDisk,
   Plus,
   ClockCounterClockwise,
@@ -138,7 +138,7 @@ export function FloatingToolbar({
           title={sidebarOpen ? "Close files" : "Open files"}
           active={sidebarOpen}
         >
-          <List size={18} weight={sidebarOpen ? "fill" : "regular"} />
+          <FolderOpen size={18} weight={sidebarOpen ? "fill" : "regular"} />
         </DockBtn>
 
         <DockSep />

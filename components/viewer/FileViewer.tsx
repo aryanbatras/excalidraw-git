@@ -2,6 +2,7 @@
 
 import { useReducer, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { ArrowLeft } from "@phosphor-icons/react";
 import type { RepoRef } from "@/lib/types";
 import { classifyFile, fileExt } from "@/lib/fileTypes";
 import { MarkdownViewer } from "./MarkdownViewer";
@@ -50,9 +51,11 @@ function reducer(state: State, action: Action): State {
 export function FileViewer({
   repo,
   path,
+  onBack,
 }: {
   repo: RepoRef;
   path: string;
+  onBack?: () => void;
 }) {
   const kind = classifyFile(path);
   const ext = fileExt(path);
@@ -113,24 +116,61 @@ export function FileViewer({
         <div>
           <p className="text-[14px] font-medium text-danger">Failed to load file</p>
           <p className="mt-1 text-[13px] text-text-muted">{state.error}</p>
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#6965db] px-3 py-1.5 text-[12px] font-medium text-white transition hover:bg-[#5a56c9]"
+            >
+              <ArrowLeft size={14} />
+              Back to files
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
-  switch (kind) {
-    case "markdown":
-      return <MarkdownViewer content={state.content ?? ""} />;
-    case "code":
-      return <CodeViewer content={state.content ?? ""} extension={ext} />;
-    case "image":
-      return state.blobUrl ? (
-        <ImageViewer blobUrl={state.blobUrl} fileName={path} />
-      ) : null;
-    case "pdf":
-      return state.blobUrl ? <PdfViewer blobUrl={state.blobUrl} /> : null;
-    case "text":
-    default:
-      return <TextViewer content={state.content ?? ""} />;
-  }
+  const viewerContent = (() => {
+    switch (kind) {
+      case "markdown":
+        return <MarkdownViewer content={state.content ?? ""} />;
+      case "code":
+        return <CodeViewer content={state.content ?? ""} extension={ext} />;
+      case "image":
+        return state.blobUrl ? (
+          <ImageViewer blobUrl={state.blobUrl} fileName={path} />
+        ) : null;
+      case "pdf":
+        return state.blobUrl ? <PdfViewer blobUrl={state.blobUrl} /> : null;
+      case "text":
+      default:
+        return <TextViewer content={state.content ?? ""} />;
+    }
+  })();
+
+  // Wrap non-excalidraw viewers with a back button header
+  if (kind === "excalidraw") return viewerContent;
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Back button header */}
+      <div className="flex items-center gap-3 border-b border-[#e5e5e5] bg-white px-4 py-2.5">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-[#868686] transition hover:bg-black/[0.04] hover:text-[#1b1b1f]"
+          >
+            <ArrowLeft size={16} />
+            Back
+          </button>
+        )}
+        <span className="truncate text-[13px] font-medium text-[#1b1b1f]">
+          {path.split("/").pop()}
+        </span>
+      </div>
+      <div className="flex-1 overflow-auto">
+        {viewerContent}
+      </div>
+    </div>
+  );
 }

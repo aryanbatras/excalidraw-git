@@ -5,7 +5,7 @@ import { useRef, useCallback, type ReactNode } from "react";
 import "@excalidraw/excalidraw/index.css";
 import { loadLibraryFromBlob } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { List } from "@phosphor-icons/react";
+import { FolderOpen } from "@phosphor-icons/react";
 import { useStore } from "@/lib/store";
 import { LIBRARIES } from "@/lib/libraries/registry";
 
@@ -148,7 +148,7 @@ export function ExcalidrawStage({
                 className="h-9 w-9 rounded-lg bg-white/90 p-1.5 text-[#868686] shadow-sm backdrop-blur-sm transition hover:bg-white hover:text-[#1b1b1f]"
                 title="Toggle file explorer"
               >
-                <List size={18} />
+                <FolderOpen size={18} />
               </button>
             )
           : undefined

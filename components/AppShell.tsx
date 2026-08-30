@@ -483,7 +483,14 @@ export function AppShell() {
         )}
 
         {selectedPath && !isExcalidrawFile && !switchingTo ? (
-          <FileViewer repo={repo} path={selectedPath} />
+          <FileViewer
+            repo={repo}
+            path={selectedPath}
+            onBack={() => {
+              setSelectedPath(null);
+              setCurrent(null);
+            }}
+          />
         ) : current ? (
           <ErrorBoundary>
             <EditorPane

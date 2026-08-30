@@ -1,16 +1,35 @@
 "use client";
 
 import { useStore } from "@/lib/store";
-import { LIBRARIES } from "@/lib/libraries/registry";
 import { X } from "@phosphor-icons/react";
+import { useState, useCallback } from "react";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const autoSaveEnabled = useStore((s) => s.autoSaveEnabled);
   const autoSaveInterval = useStore((s) => s.autoSaveIntervalSeconds);
   const setAutoSave = useStore((s) => s.setAutoSave);
   const setAutoSaveInterval = useStore((s) => s.setAutoSaveInterval);
-  const enabledLibraries = useStore((s) => s.enabledLibraries);
-  const toggleLibrary = useStore((s) => s.toggleLibrary);
+  const [intervalInput, setIntervalInput] = useState(String(autoSaveInterval));
+
+  const handleIntervalChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setIntervalInput(val);
+      const num = Number(val);
+      if (!isNaN(num) && num >= 10) {
+        setAutoSaveInterval(num);
+      }
+    },
+    [setAutoSaveInterval],
+  );
+
+  const handleIntervalBlur = useCallback(() => {
+    const num = Number(intervalInput);
+    if (isNaN(num) || num < 10) {
+      setIntervalInput("10");
+      setAutoSaveInterval(10);
+    }
+  }, [intervalInput, setAutoSaveInterval]);
 
   return (
     <div
@@ -44,13 +63,13 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
               </div>
               <button
                 onClick={() => setAutoSave(!autoSaveEnabled)}
-                className={`relative h-[22px] w-[38px] rounded-full transition-colors ${
+                className={`relative h-[22px] w-[38px] rounded-full transition-colors flex-shrink-0 ${
                   autoSaveEnabled ? "bg-[#6965db]" : "bg-[#d1d1d6]"
                 }`}
               >
                 <span
-                  className={`absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform ${
-                    autoSaveEnabled ? "translate-x-[18px]" : "translate-x-[2px]"
+                  className={`absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform ${
+                    autoSaveEnabled ? "translate-x-[16px]" : "translate-x-0"
                   }`}
                 />
               </button>
@@ -58,54 +77,21 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
             {autoSaveEnabled && (
               <div className="mt-3">
                 <div className="flex items-center justify-between text-[12px] text-[#868686]">
-                  <span>Interval</span>
-                  <span className="font-mono text-[#1b1b1f]">{autoSaveInterval}s</span>
+                  <span>Interval (seconds)</span>
                 </div>
                 <input
-                  type="range"
-                  min={30}
-                  max={300}
+                  type="number"
+                  min={10}
+                  max={3600}
                   step={10}
-                  value={autoSaveInterval}
-                  onChange={(e) => setAutoSaveInterval(Number(e.target.value))}
-                  className="mt-1.5 w-full accent-[#6965db]"
+                  value={intervalInput}
+                  onChange={handleIntervalChange}
+                  onBlur={handleIntervalBlur}
+                  className="mt-1.5 w-full rounded-lg border border-[#e5e5e5] bg-white px-3 py-2 text-[13px] text-[#1b1b1f] outline-none focus:border-[#6965db] focus:ring-1 focus:ring-[#6965db]/20"
                 />
-                <div className="flex justify-between text-[10px] text-[#868686]">
-                  <span>30s</span>
-                  <span>5min</span>
-                </div>
+                <p className="mt-1 text-[10px] text-[#868686]">Min 10s, max 3600s (1 hour)</p>
               </div>
             )}
-          </Section>
-
-          {/* Libraries */}
-          <Section title="Libraries" className="mt-4">
-            <p className="mb-3 text-[11px] text-[#868686]">
-              Community icon sets for the Excalidraw sidebar
-            </p>
-            <div className="space-y-1">
-              {LIBRARIES.map((lib) => (
-                <button
-                  key={lib.id}
-                  onClick={() => toggleLibrary(lib.id)}
-                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-black/5"
-                >
-                  <span
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px] font-semibold ${
-                      enabledLibraries.includes(lib.id)
-                        ? "border-[#6965db] bg-[#6965db] text-white"
-                        : "border-[#e5e5e5] bg-white text-transparent"
-                    }`}
-                  >
-                    {enabledLibraries.includes(lib.id) && "\u2713"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium text-[#1b1b1f]">{lib.name}</div>
-                    <div className="truncate text-[11px] text-[#868686]">{lib.items} items</div>
-                  </div>
-                </button>
-              ))}
-            </div>
           </Section>
 
           {/* Keyboard shortcuts */}

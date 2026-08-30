@@ -16,6 +16,7 @@ export function EditorPane({
   initialSha,
   registerSave,
   onApiReady,
+  onToggleSidebar,
 }: {
   repo: RepoRef;
   path: string;
@@ -23,6 +24,7 @@ export function EditorPane({
   initialSha: string;
   registerSave: (fn: (() => void) | null) => void;
   onApiReady?: (api: ExcalidrawImperativeAPI | null) => void;
+  onToggleSidebar?: () => void;
 }) {
   const cacheScene = useStore((s) => s.cacheScene);
   const markDirty = useStore((s) => s.markDirty);
@@ -162,6 +164,7 @@ export function EditorPane({
       path={path}
       onChange={handleChange}
       onApiReady={onApiReady}
+      onToggleSidebar={onToggleSidebar}
     />
   );
 }

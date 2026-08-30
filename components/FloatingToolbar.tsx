@@ -46,6 +46,7 @@ interface Props {
   onChangeRepo: () => void;
   onRestore: (sha: string) => void;
   onAi: () => void;
+  hasUnsavedChanges?: boolean;
 }
 
 export function FloatingToolbar({
@@ -61,6 +62,7 @@ export function FloatingToolbar({
   onChangeRepo,
   onRestore,
   onAi,
+  hasUnsavedChanges,
 }: Props) {
   const status = useStore((s) => s.status);
   const statusMsg = useStore((s) => s.statusMsg);
@@ -254,14 +256,20 @@ export function FloatingToolbar({
         </DockBtn>
 
         {/* Save */}
-        <DockBtn
-          onClick={onSave}
-          disabled={!selectedPath}
-          title="Save (Cmd+S)"
-          active={isDirty}
-        >
-          <FloppyDisk size={18} />
-        </DockBtn>
+        <div className="relative">
+          <DockBtn
+            onClick={onSave}
+            disabled={!selectedPath}
+            title={hasUnsavedChanges ? "Push to GitHub" : "Save (Cmd+S)"}
+            active={isDirty}
+            accent={hasUnsavedChanges}
+          >
+            <FloppyDisk size={18} />
+          </DockBtn>
+          {hasUnsavedChanges && (
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#6965db] animate-pulse" />
+          )}
+        </div>
 
         <DockSep />
 

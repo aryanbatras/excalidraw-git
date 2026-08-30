@@ -5,6 +5,7 @@ import { useRef, useCallback, type ReactNode } from "react";
 import "@excalidraw/excalidraw/index.css";
 import { loadLibraryFromBlob } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import { List } from "@phosphor-icons/react";
 import { useStore } from "@/lib/store";
 import { LIBRARIES } from "@/lib/libraries/registry";
 
@@ -26,11 +27,13 @@ export function ExcalidrawStage({
   path,
   onChange,
   onApiReady,
+  onToggleSidebar,
 }: {
   initialData: Record<string, unknown>;
   path: string;
   onChange: (elements: unknown, appState: unknown, files: unknown) => void;
   onApiReady?: (api: ExcalidrawImperativeAPI | null) => void;
+  onToggleSidebar?: () => void;
 }) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const loadedLibs = useRef(new Set<string>());
@@ -137,6 +140,19 @@ export function ExcalidrawStage({
       excalidrawAPI={handleAPI}
       onChange={handleChange}
       theme="light"
+      renderTopRightUI={
+        onToggleSidebar
+          ? () => (
+              <button
+                onClick={onToggleSidebar}
+                className="h-9 w-9 rounded-lg bg-white/90 p-1.5 text-[#868686] shadow-sm backdrop-blur-sm transition hover:bg-white hover:text-[#1b1b1f]"
+                title="Toggle file explorer"
+              >
+                <List size={18} />
+              </button>
+            )
+          : undefined
+      }
       UIOptions={{
         canvasActions: {
           saveToActiveFile: false,

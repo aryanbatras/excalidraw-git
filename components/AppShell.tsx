@@ -436,7 +436,7 @@ export function AppShell() {
     }
   }
 
-  // Unsaved indicator: show when auto-save is off and there are local changes
+  // hasUnsavedChanges: true when auto-save is off and any file is dirty
   const hasUnsavedChanges = useMemo(() => Object.values(dirty).some(Boolean), [dirty]);
   const showUnsavedIndicator = !autoSaveEnabled && hasUnsavedChanges;
 
@@ -447,22 +447,6 @@ export function AppShell() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-white">
-      {/* ── Unsaved changes indicator (top right, 20% from edge) ── */}
-      {showUnsavedIndicator && (
-        <div className="fixed right-[20%] top-4 z-50">
-          <div className="flex items-center gap-2 rounded-full border border-[#6965db]/20 bg-white/90 px-3.5 py-1.5 shadow-[0_2px_12px_rgba(105,101,219,0.15)] backdrop-blur-sm">
-            <span className="h-2 w-2 rounded-full bg-[#6965db] animate-pulse" />
-            <span className="text-[12px] font-medium text-[#1b1b1f]">Unsaved changes</span>
-            <button
-              onClick={() => saveRef.current?.()}
-              className="ml-1 rounded-full bg-[#6965db] px-3 py-1 text-[11px] font-medium text-white transition hover:bg-[#5a56c9]"
-            >
-              Push to GitHub
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ── Canvas (fullscreen) ── */}
       <div className="absolute inset-0 z-0">
         {recovered && current && recovered.path === current.path && (
@@ -510,6 +494,7 @@ export function AppShell() {
               initialSha={current.sha}
               registerSave={registerSave}
               onApiReady={onApiReady}
+              onToggleSidebar={() => setSidebarOpen((v) => !v)}
             />
           </ErrorBoundary>
         ) : loadingFile || switchingTo ? (
@@ -546,6 +531,7 @@ export function AppShell() {
         onChangeRepo={() => clearRepo()}
         onRestore={restoreVersion}
         onAi={() => setAiChatOpen(true)}
+        hasUnsavedChanges={showUnsavedIndicator}
       />
 
       {/* ── Sidebar overlay (glass panel, slides from left) ── */}

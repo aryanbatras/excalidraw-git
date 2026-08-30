@@ -61,7 +61,7 @@ export const useStore = create<State>()(
       sceneCache: {},
       autoSaveEnabled: false,
       autoSaveIntervalSeconds: 60,
-      enabledLibraries: ["software-logos", "aws-architecture", "devops-icons"],
+      enabledLibraries: ["software-logos", "aws-architecture", "devops-icons", "uml-er", "network-topology", "aws-serverless"],
 
       setRepo: (r) => set({ repo: r, dirCache: {}, loadedDirs: {}, selectedPath: null, dirty: {} }),
       clearRepo: () => set({ repo: null, dirCache: {}, loadedDirs: {}, selectedPath: null, dirty: {} }),

@@ -171,7 +171,7 @@ export function FloatingToolbar({
             <Plus size={18} />
           </DockBtn>
           {newOpen && (
-            <div className="absolute left-1/2 top-full z-50 mb-2 w-48 -translate-x-1/2 rounded-xl border border-black/[0.06] bg-white py-1.5 shadow-[0_4px_32px_rgba(0,0,0,0.12)]">
+            <div className="absolute left-1/2 bottom-full z-50 mb-2 w-48 -translate-x-1/2 rounded-xl border border-black/[0.06] bg-white py-1.5 shadow-[0_4px_32px_rgba(0,0,0,0.12)]">
               {TEMPLATES.map((t) => (
                 <button
                   key={t.id}
@@ -208,7 +208,7 @@ export function FloatingToolbar({
             <ClockCounterClockwise size={18} />
           </DockBtn>
           {historyOpen && (
-            <div className="absolute left-1/2 top-full z-50 mb-2 w-72 -translate-x-1/2 rounded-xl border border-black/[0.06] bg-white py-1.5 shadow-[0_4px_32px_rgba(0,0,0,0.12)]">
+            <div className="absolute left-1/2 bottom-full z-50 mb-2 w-72 -translate-x-1/2 rounded-xl border border-black/[0.06] bg-white py-1.5 shadow-[0_4px_32px_rgba(0,0,0,0.12)]">
               <div className="border-b border-black/[0.06] px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#868686]">
                 History
               </div>
@@ -279,7 +279,7 @@ export function FloatingToolbar({
             <Power size={18} />
           </DockBtn>
           {accountOpen && (
-            <div className="absolute right-0 top-full z-50 mb-2 w-48 rounded-xl border border-black/[0.06] bg-white py-1.5 shadow-[0_4px_32px_rgba(0,0,0,0.12)]">
+            <div className="absolute right-0 bottom-full z-50 mb-2 w-48 rounded-xl border border-black/[0.06] bg-white py-1.5 shadow-[0_4px_32px_rgba(0,0,0,0.12)]">
               <button
                 onClick={() => { setAccountOpen(false); onChangeRepo(); }}
                 className="block w-full px-4 py-2 text-left text-[13px] text-[#1b1b1f] transition hover:bg-black/[0.04]"

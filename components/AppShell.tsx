@@ -450,12 +450,12 @@ export function AppShell() {
       {/* ── Unsaved changes indicator (top right, 20% from edge) ── */}
       {showUnsavedIndicator && (
         <div className="fixed right-[20%] top-4 z-50">
-          <div className="flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50/90 px-3 py-1.5 shadow-sm backdrop-blur-sm">
-            <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-[11px] font-medium text-amber-700">Unsaved changes</span>
+          <div className="flex items-center gap-2 rounded-full border border-[#6965db]/20 bg-white/90 px-3.5 py-1.5 shadow-[0_2px_12px_rgba(105,101,219,0.15)] backdrop-blur-sm">
+            <span className="h-2 w-2 rounded-full bg-[#6965db] animate-pulse" />
+            <span className="text-[12px] font-medium text-[#1b1b1f]">Unsaved changes</span>
             <button
               onClick={() => saveRef.current?.()}
-              className="ml-1 rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-medium text-white transition hover:bg-amber-700"
+              className="ml-1 rounded-full bg-[#6965db] px-3 py-1 text-[11px] font-medium text-white transition hover:bg-[#5a56c9]"
             >
               Push to GitHub
             </button>

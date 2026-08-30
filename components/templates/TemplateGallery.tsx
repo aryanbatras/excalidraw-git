@@ -72,7 +72,7 @@ export function TemplateGallery({
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="fixed inset-4 z-50 mx-auto my-auto flex max-h-[85vh] max-w-[720px] flex-col rounded-2xl bg-white shadow-[0_16px_64px_rgba(0,0,0,0.16)] outline-none sm:inset-auto sm:top-[8vh]"
+        className="fixed left-1/2 top-1/2 z-50 flex h-[85vh] w-[min(720px,90vw)] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl bg-white shadow-[0_16px_64px_rgba(0,0,0,0.16)] outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -98,7 +98,7 @@ export function TemplateGallery({
         </div>
 
         {/* Category tabs */}
-        <div className="flex gap-1.5 overflow-x-auto border-b border-border px-6 py-2.5 scrollbar-none">
+        <div className="flex gap-2 overflow-x-auto border-b border-border px-6 py-3 scrollbar-none">
           <Tab
             active={activeCategory === "all"}
             onClick={() => setActiveCategory("all")}
@@ -216,7 +216,7 @@ function Tab({
   return (
     <button
       onClick={onClick}
-      className={`whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-medium transition ${
+      className={`whitespace-nowrap rounded-full px-4 py-1.5 text-[13px] font-medium transition ${
         active
           ? "bg-text text-white"
           : "bg-surface-2 text-text-muted hover:bg-surface hover:text-text"

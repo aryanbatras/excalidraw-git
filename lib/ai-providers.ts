@@ -31,11 +31,11 @@ const PROVIDERS: Record<AiProvider, ProviderConfig> = {
     name: "Mistral",
     endpoint: "https://api.mistral.ai/v1/chat/completions",
     models: {
-      "Mistral Small 4": "mistral-small-4-0-26-03",
-      "Ministral 8B": "ministral-3-8b-25-12",
-      "Ministral 3B": "ministral-3-3b-25-12",
+      "Mistral Small": "mistral-small-latest",
+      "Ministral 8B": "ministral-8b-latest",
+      "Ministral 3B": "ministral-3b-latest",
     },
-    defaultModel: "mistral-small-4-0-26-03",
+    defaultModel: "mistral-small-latest",
     maxTokensKey: "max_tokens",
   },
 };

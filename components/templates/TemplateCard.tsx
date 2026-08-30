@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import type { GalleryTemplate } from "@/lib/templates/gallery";
 import { TemplatePreview } from "./TemplatePreview";
 
@@ -24,7 +23,8 @@ export function TemplateCard({
         {imgFailed ? (
           <TemplatePreview file={template.file} />
         ) : (
-          <Image
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
             src={template.thumbnail}
             alt={template.name}
             width={400}

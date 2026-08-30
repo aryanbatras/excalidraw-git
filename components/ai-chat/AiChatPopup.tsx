@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { X, Sparkle, Stop } from "@phosphor-icons/react";
+import { useCallback, useRef, useState } from "react";
+import { X, Sparkle, ArrowRight } from "@phosphor-icons/react";
 import { Button } from "@/components/ui";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { AiProvider } from "@/lib/ai-providers";
-import { getProviderConfig } from "@/lib/ai-providers";
-import { useAiStream } from "./useAiStream";
-import { ChatMessageBubble } from "./ChatMessage";
+import { streamAiResponse, getProviderConfig } from "@/lib/ai-providers";
+import { SYSTEM_PROMPT } from "@/lib/ai-prompts";
+import { parseAiResponse } from "./validateScene";
 import { ModelSelector } from "./ModelSelector";
 import { SystemPromptViewer } from "./SystemPromptViewer";
 
@@ -25,31 +25,16 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
     return "groq";
   });
   const [input, setInput] = useState("");
-  const { messages, isStreaming, send, stop, clear } = useAiStream();
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    localStorage.setItem("exgit_ai_provider", provider);
-  }, [provider]);
-
-  useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    if (open && textareaRef.current) {
-      textareaRef.current.focus();
-    }
-  }, [open]);
 
   const adjustHeight = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = "auto";
-    const maxPx = 6 * 24;
+    const maxPx = 4 * 24;
     ta.style.height = `${Math.min(ta.scrollHeight, maxPx)}px`;
   }, []);
 
@@ -61,47 +46,51 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
     [adjustHeight],
   );
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isGenerating) return;
 
     const apiKey = localStorage.getItem(`exgit_${provider}_apikey`);
     if (!apiKey) {
       const config = getProviderConfig(provider);
-      alert(`Add your ${config.name} API key in Settings first.`);
+      setError(`Add your ${config.name} API key in Settings first.`);
       return;
     }
 
-    send(trimmed, provider);
-    setInput("");
-    requestAnimationFrame(() => {
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-      }
-    });
-  }, [input, isStreaming, provider, send]);
+    setIsGenerating(true);
+    setError(null);
+    setSuccess(false);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSubmit();
-      }
-    },
-    [handleSubmit],
-  );
+    try {
+      let accumulated = "";
+      const stream = streamAiResponse(provider, SYSTEM_PROMPT, [{ role: "user", content: trimmed }]);
 
-  const handleApplyToCanvas = useCallback(
-    async (skeletonElements: unknown[]) => {
+      for await (const chunk of stream) {
+        if (chunk.type === "chunk" && chunk.content) {
+          accumulated += chunk.content;
+        } else if (chunk.type === "error") {
+          setError(chunk.error ?? "Unknown error.");
+          setIsGenerating(false);
+          return;
+        }
+      }
+
+      const parsed = parseAiResponse(accumulated);
+      if (!parsed.ok || !parsed.elements) {
+        setError(parsed.error ?? "Failed to parse diagram elements.");
+        setIsGenerating(false);
+        return;
+      }
+
       if (!excalidrawApi) {
-        alert("Canvas not ready.");
+        setError("Canvas not ready. Open a file first.");
+        setIsGenerating(false);
         return;
       }
 
       const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
-
       const excalidrawElements = convertToExcalidrawElements(
-        skeletonElements as Parameters<typeof convertToExcalidrawElements>[0],
+        parsed.elements as Parameters<typeof convertToExcalidrawElements>[0],
         { regenerateIds: true },
       );
 
@@ -119,86 +108,98 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
       } else {
         excalidrawApi.updateScene({ elements: excalidrawElements });
       }
+
+      setSuccess(true);
+      setInput("");
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto";
+        }
+      });
+      setTimeout(() => setSuccess(false), 2000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Generation failed.");
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [input, isGenerating, provider, excalidrawApi]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit();
+      }
     },
-    [excalidrawApi],
+    [handleSubmit],
   );
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center pb-24" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30" />
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
       <div
-        className="relative z-10 flex w-full max-w-[640px] flex-col rounded-2xl bg-white shadow-[0_16px_64px_rgba(0,0,0,0.16)] overflow-hidden"
+        className="relative z-10 w-full max-w-[560px] rounded-2xl border border-white/60 bg-white/90 shadow-[0_8px_48px_rgba(0,0,0,0.12)] backdrop-blur-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#e5e5e5] px-4 py-3">
+        <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <Sparkle className="h-5 w-5 text-[#6965db]" weight="fill" />
-            <span className="text-[15px] font-semibold text-[#1b1b1f]">AI Diagram Generator</span>
+            <div className="grid h-7 w-7 place-items-center rounded-lg bg-[#6965db]/10">
+              <Sparkle className="h-4 w-4 text-[#6965db]" weight="fill" />
+            </div>
+            <span className="text-[14px] font-semibold text-[#1b1b1f]">AI Diagram Generator</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            {messages.length > 0 && (
-              <button
-                onClick={clear}
-                className="rounded-md px-2 py-1 text-[12px] text-[#868686] hover:text-[#1b1b1f] hover:bg-[#f5f5f5] transition-colors"
-              >
-                Clear
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="rounded-md p-1 text-[#868686] hover:text-[#1b1b1f] hover:bg-[#f5f5f5] transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="grid h-7 w-7 place-items-center rounded-lg text-[#868686] transition hover:bg-black/5 hover:text-[#1b1b1f]"
+          >
+            <X size={16} />
+          </button>
         </div>
-
-        {/* Messages */}
-        {messages.length > 0 && (
-          <div ref={listRef} className="max-h-80 overflow-y-auto px-4 py-3">
-            {messages.map((msg) => (
-              <ChatMessageBubble key={msg.id} message={msg} onApply={handleApplyToCanvas} />
-            ))}
-          </div>
-        )}
 
         {/* Input area */}
-        <div className="border-t border-[#e5e5e5] px-4 py-3">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            placeholder="Describe your diagram, paste markdown, or explain a concept..."
-            rows={1}
-            className="w-full resize-none bg-transparent text-[14px] font-sans leading-relaxed text-[#1b1b1f] outline-none placeholder:text-[#868686]"
-          />
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-[#e5e5e5] px-4 py-2.5">
-          <ModelSelector value={provider} onChange={setProvider} />
-          <div className="flex items-center gap-2">
-            <SystemPromptViewer provider={provider} />
-            {isStreaming ? (
-              <Button variant="quiet" onClick={stop} className="flex items-center gap-1.5">
-                <Stop className="h-3.5 w-3.5" />
-                Stop
-              </Button>
-            ) : (
+        <div className="px-4 pb-3">
+          <div className="rounded-xl border border-[#e5e5e5] bg-white p-3 transition focus-within:border-[#6965db] focus-within:ring-1 focus-within:ring-[#6965db]/20">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              placeholder="Describe your diagram..."
+              rows={2}
+              className="w-full resize-none bg-transparent text-[14px] leading-relaxed text-[#1b1b1f] outline-none placeholder:text-[#868686]"
+            />
+            <div className="flex items-center justify-between pt-2 border-t border-[#f0f0f0]">
+              <div className="flex items-center gap-2">
+                <ModelSelector value={provider} onChange={setProvider} />
+                <SystemPromptViewer provider={provider} />
+              </div>
               <Button
                 variant="primary"
                 onClick={handleSubmit}
                 disabled={!input.trim()}
-                loading={isStreaming}
+                loading={isGenerating}
+                className="flex items-center gap-1.5"
               >
-                Send
+                {isGenerating ? "Generating..." : "Generate"}
+                {!isGenerating && <ArrowRight size={14} />}
               </Button>
-            )}
+            </div>
           </div>
+
+          {/* Status messages */}
+          {error && (
+            <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-600">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="mt-2 rounded-lg bg-green-50 px-3 py-2 text-[12px] text-green-600">
+              Diagram added to canvas
+            </div>
+          )}
         </div>
       </div>
     </div>

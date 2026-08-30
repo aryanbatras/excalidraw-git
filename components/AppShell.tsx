@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import { useStore } from "@/lib/store";
 import { RepoPicker } from "@/components/RepoPicker";
 import { FileTree } from "@/components/sidebar/FileTree";
-import { TopBar } from "@/components/topbar/TopBar";
-import { SidebarSimple } from "@phosphor-icons/react";
+import { FloatingToolbar } from "@/components/FloatingToolbar";
 import { Modal, Button } from "@/components/ui";
 import type { Scene, TreeEntry } from "@/lib/types";
 import type { TemplateId } from "@/lib/templates";
@@ -20,11 +19,12 @@ import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { FileViewer } from "@/components/viewer/FileViewer";
 import { classifyFile } from "@/lib/fileTypes";
 import { AiChatPopup } from "@/components/ai-chat/AiChatPopup";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Editor must never load on the server (Excalidraw touches window at import).
 const EditorPane = dynamic(
   () => import("@/components/editor/EditorPane").then((m) => m.EditorPane),
-  { ssr: false, loading: () => <div className="grid h-full place-items-center bg-white"><div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-accent" /></div> },
+  { ssr: false, loading: () => <div className="grid h-full place-items-center bg-white"><div className="h-8 w-8 animate-spin rounded-full border-2 border-[#e5e5e5] border-t-[#6965db]" /></div> },
 );
 
 export function AppShell() {
@@ -40,6 +40,7 @@ export function AppShell() {
   const markDirty = useStore((s) => s.markDirty);
   const setStatus = useStore((s) => s.setStatus);
   const setLogin = useStore((s) => s.setLogin);
+  const dirty = useStore((s) => s.dirty);
 
   const [current, setCurrent] = useState<{ path: string; scene: Scene; sha: string } | null>(null);
   const [recovered, setRecovered] = useState<{ path: string; remote: Scene } | null>(null);
@@ -73,22 +74,20 @@ export function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
 
-  // Left sidebar: pinned open by default; can be collapsed to a thin rail that
-  // expands on hover ("5% of screen → full width").
-  const [sidebarPinned, setSidebarPinned] = useState(true);
-  const [sidebarHover, setSidebarHover] = useState(false);
-  const sidebarCollapsed = !sidebarPinned;
-  const sidebarExpanded = sidebarPinned || sidebarHover;
+  // Left sidebar overlay — slides from left edge, floats over canvas
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Global auto-save: commits all dirty files at the configured interval
   const autoSaveEnabled = useStore((s) => s.autoSaveEnabled);
   const autoSaveInterval = useStore((s) => s.autoSaveIntervalSeconds);
   useEffect(() => {
     if (!autoSaveEnabled || !repo) return;
+    let cancelled = false;
     const id = setInterval(async () => {
+      if (cancelled) return;
       const state = useStore.getState();
       for (const [path, isDirty] of Object.entries(state.dirty)) {
-        if (!isDirty) continue;
+        if (!isDirty || cancelled) continue;
         const cached = state.sceneCache[path];
         if (!cached) continue;
         if (path === state.selectedPath) {
@@ -97,6 +96,7 @@ export function AppShell() {
         }
         // Background commit for non-active files
         try {
+          const controller = new AbortController();
           const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
           const res = await fetch(`/api/commit?${qs}`, {
             method: "POST",
@@ -105,6 +105,7 @@ export function AppShell() {
               files: [{ path, content: sceneToBase64(cached.scene) }],
               message: `auto-save: ${path}`,
             }),
+            signal: controller.signal,
           });
           if (res.ok) {
             const { commitSha } = await res.json() as { commitSha: string };
@@ -117,7 +118,10 @@ export function AppShell() {
         } catch { /* best-effort */ }
       }
     }, autoSaveInterval * 1000);
-    return () => clearInterval(id);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [autoSaveEnabled, autoSaveInterval, repo]);
 
   useEffect(() => {
@@ -432,19 +436,103 @@ export function AppShell() {
     }
   }
 
+  // Unsaved indicator: show when auto-save is off and there are local changes
+  const hasUnsavedChanges = useMemo(() => Object.values(dirty).some(Boolean), [dirty]);
+  const showUnsavedIndicator = !autoSaveEnabled && hasUnsavedChanges;
+
   if (!repo) return <RepoPicker />;
 
-  // Determine which file kind is selected
   const selectedKind = selectedPath ? classifyFile(selectedPath) : null;
   const isExcalidrawFile = selectedKind === "excalidraw";
 
   return (
-    <div className="flex h-[100dvh] flex-col">
-      <TopBar
+    <div className="relative h-screen w-screen overflow-hidden bg-white">
+      {/* ── Unsaved changes indicator (top right, 20% from edge) ── */}
+      {showUnsavedIndicator && (
+        <div className="fixed right-[20%] top-4 z-50">
+          <div className="flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50/90 px-3 py-1.5 shadow-sm backdrop-blur-sm">
+            <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-[11px] font-medium text-amber-700">Unsaved changes</span>
+            <button
+              onClick={() => saveRef.current?.()}
+              className="ml-1 rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-medium text-white transition hover:bg-amber-700"
+            >
+              Push to GitHub
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Canvas (fullscreen) ── */}
+      <div className="absolute inset-0 z-0">
+        {recovered && current && recovered.path === current.path && (
+          <div className="absolute left-1/2 top-16 z-50 -translate-x-1/2 rounded-xl border border-white/60 bg-white/90 px-4 py-2.5 text-[13px] shadow-[0_4px_32px_rgba(0,0,0,0.12)] backdrop-blur-xl">
+            <span className="mr-3 text-[#1b1b1f]">Unsaved changes recovered.</span>
+            <button
+              onClick={() => setRecovered(null)}
+              className="mr-2 rounded-lg px-2 py-0.5 text-[#868686] transition hover:bg-black/5"
+            >
+              Keep local
+            </button>
+            <button
+              onClick={() => {
+                const remote = recovered.remote;
+                setCurrent({ path: recovered.path, scene: remote, sha: current!.sha });
+                cacheScene(recovered.path, remote, current!.sha);
+                void saveScene(`${repo!.owner}/${repo!.repo}/${recovered.path}`, remote, current!.sha);
+                setRecovered(null);
+              }}
+              className="rounded-lg bg-[#6965db] px-2.5 py-0.5 text-white transition hover:bg-[#5a56c9]"
+            >
+              Reload from GitHub
+            </button>
+          </div>
+        )}
+
+        {switchingTo && (
+          <div className="absolute inset-0 z-40 grid place-items-center bg-white/60 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/90 px-6 py-4 shadow-[0_4px_32px_rgba(0,0,0,0.08)] backdrop-blur-xl">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#e5e5e5] border-t-[#6965db]" />
+              <span className="text-[13px] text-[#868686]">Opening {switchingTo.split("/").pop()}...</span>
+            </div>
+          </div>
+        )}
+
+        {selectedPath && !isExcalidrawFile && !switchingTo ? (
+          <FileViewer repo={repo} path={selectedPath} />
+        ) : current ? (
+          <ErrorBoundary>
+            <EditorPane
+              key={current.path}
+              repo={repo}
+              path={current.path}
+              initialScene={current.scene}
+              initialSha={current.sha}
+              registerSave={registerSave}
+              onApiReady={onApiReady}
+            />
+          </ErrorBoundary>
+        ) : loadingFile || switchingTo ? (
+          <div className="grid h-full place-items-center text-[13px] text-[#868686]">Opening...</div>
+        ) : (
+          <div className="grid h-full place-items-center px-6 text-center">
+            <div>
+              <p className="text-[14px] font-medium text-[#1b1b1f]">No diagram open</p>
+              <p className="mt-1 text-[13px] text-[#868686]">
+                Pick a file from the sidebar or click + to start.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Floating toolbar (top center) ── */}
+      <FloatingToolbar
         repo={repo}
         selectedPath={selectedPath}
-        // Section 3: Pass switchingTo so the header shows the new file name immediately
         switchingTo={switchingTo}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
         onSave={() => saveRef.current?.()}
         onNew={(id) => {
           setNewName(id === "blank" ? "untitled" : id);
@@ -459,134 +547,52 @@ export function AppShell() {
         onRestore={restoreVersion}
         onAi={() => setAiChatOpen(true)}
       />
-      <div className="flex min-h-0 flex-1">
-        <aside
-        onMouseEnter={() => setSidebarHover(true)}
-        onMouseLeave={() => setSidebarHover(false)}
-        className={`relative flex shrink-0 flex-col overflow-hidden bg-surface shadow-[4px_0_24px_rgba(0,0,0,0.03)] transition-[width] duration-150 ${
-          sidebarExpanded ? "w-[260px]" : "w-10"
-        }`}
-      >
-        <div className="flex items-center gap-1 px-2 py-2.5">
-          {sidebarExpanded && (
-            <span className="flex-1 text-[11px] font-medium uppercase tracking-wide text-text-faint">
-              Files
-            </span>
-          )}
-          <button
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            onClick={() => {
-              setSidebarPinned((p) => !p);
-              setSidebarHover(false);
-            }}
-            className={`grid h-6 w-6 place-items-center rounded-md text-text-muted transition hover:bg-surface-2 hover:text-text ${
-              sidebarExpanded ? "ml-auto" : "m-auto"
-            }`}
+
+      {/* ── Sidebar overlay (glass panel, slides from left) ── */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40" onClick={() => setSidebarOpen(false)}>
+          <div className="absolute inset-0 bg-black/10 backdrop-blur-[2px]" />
+          <div
+            className="absolute left-0 top-0 bottom-0 z-10 w-[280px] border-r border-black/8 bg-white/90 shadow-[4px_0_32px_rgba(0,0,0,0.08)] backdrop-blur-2xl transition-transform duration-200 ease-out"
+            style={{ transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)" }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <SidebarSimple size={15} weight={sidebarCollapsed ? "bold" : "regular"} />
-          </button>
-        </div>
-        {!sidebarExpanded && (
-          <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-1 text-[10px] font-medium uppercase tracking-widest text-text-faint [writing-mode:vertical-rl]">
-            Files
-          </span>
-        )}
-        <FileTree
-          repo={repo}
-          onOpen={openFile}
-          onNewFile={(dir) => {
-            setNewName("");
-            setNewState({ dir, template: "blank" });
-          }}
-          onRename={(entry) => {
-            setRenameName(entry.name.replace(/\.excalidraw$/, ""));
-            setRenameEntry(entry);
-          }}
-          onDelete={(entry) => setDeleteEntry(entry)}
-        />
-      </aside>
-
-        <main className="relative flex min-w-0 flex-1 flex-col bg-white shadow-[inset_0_0_40px_rgba(0,0,0,0.03)]">
-          {recovered && current && recovered.path === current.path && (
-            <div className="flex items-center gap-3 border-b border-status-dirty/30 bg-accent-weak px-3 py-2 text-[13px] text-text">
-              <span className="flex-1">
-                Unsaved changes from a previous session were recovered.
+            <div className="flex items-center justify-between border-b border-black/8 px-4 py-3">
+              <span className="text-[13px] font-semibold text-[#1b1b1f]">
+                Explorer
               </span>
-              <Button
-                variant="quiet"
-                onClick={() => setRecovered(null)}
-              >
-                Keep local
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  const remote = recovered.remote;
-                  setCurrent({ path: recovered.path, scene: remote, sha: current!.sha });
-                  cacheScene(recovered.path, remote, current!.sha);
-                  void saveScene(
-                    `${repo!.owner}/${repo!.repo}/${recovered.path}`,
-                    remote,
-                    current!.sha,
-                  );
-                  setRecovered(null);
-                }}
-              >
-                Reload from GitHub
-              </Button>
+              <span className="text-[12px] text-[#868686]">
+                {repo.owner}/{repo.repo}
+              </span>
             </div>
-          )}
+            <FileTree
+              repo={repo}
+              onOpen={(path) => { openFile(path); setSidebarOpen(false); }}
+              onNewFile={(dir) => {
+                setNewName("");
+                setNewState({ dir, template: "blank" });
+                setSidebarOpen(false);
+              }}
+              onRename={(entry) => {
+                setRenameName(entry.name.replace(/\.excalidraw$/, ""));
+                setRenameEntry(entry);
+              }}
+              onDelete={(entry) => setDeleteEntry(entry)}
+            />
+          </div>
+        </div>
+      )}
 
-          {/* Section 3: Instant file-switch overlay — shows immediately when switching */}
-          {switchingTo && (
-            <div className="absolute inset-0 z-20 grid place-items-center bg-white/80 backdrop-blur-[2px]">
-              <div className="flex flex-col items-center gap-3 text-[13px] text-text-muted">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-accent" />
-                <span>Opening {switchingTo.split("/").pop()}...</span>
-              </div>
-            </div>
-          )}
-
-          {/* Section 4: FileViewer for non-excalidraw files */}
-          {selectedPath && !isExcalidrawFile && !switchingTo ? (
-            <FileViewer repo={repo} path={selectedPath} />
-          ) : current ? (
-            <div className="min-h-0 flex-1">
-              <EditorPane
-                key={current.path}
-                repo={repo}
-                path={current.path}
-                initialScene={current.scene}
-                initialSha={current.sha}
-                registerSave={registerSave}
-                onApiReady={onApiReady}
-              />
-            </div>
-          ) : loadingFile || switchingTo ? (
-            <div className="grid flex-1 place-items-center text-[13px] text-text-faint">Opening...</div>
-          ) : (
-            <div className="grid flex-1 place-items-center px-6 text-center">
-              <div>
-                <p className="text-[14px] font-medium text-text">No diagram open</p>
-                <p className="mt-1 text-[13px] text-text-muted">
-                  Pick a <span className="font-mono">.excalidraw</span> file from the sidebar, or click {'"'}New{'"'} to start one.
-                </p>
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
-
-      {/* New file modal */}
+      {/* ── Modals ── */}
       {newState && (
         <Modal title={`New ${newState.template} diagram`} onClose={() => setNewState(null)}>
-          <label className="mb-1 block text-[12px] text-text-muted">File name</label>
+          <label className="mb-1 block text-[12px] text-[#868686]">File name</label>
           <input
             autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="my-diagram"
-            className="mb-3 w-full rounded-[8px] border border-border px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+            className="mb-3 w-full rounded-xl border border-[#e5e5e5] bg-white/80 px-3 py-2 text-[13px] outline-none backdrop-blur-sm focus:border-[#6965db]"
           />
           <div className="flex justify-end gap-2">
             <Button onClick={() => setNewState(null)}>Cancel</Button>
@@ -597,14 +603,13 @@ export function AppShell() {
         </Modal>
       )}
 
-      {/* Rename modal */}
       {renameEntry && (
         <Modal title="Rename file" onClose={() => setRenameEntry(null)}>
           <input
             autoFocus
             value={renameName}
             onChange={(e) => setRenameName(e.target.value)}
-            className="mb-3 w-full rounded-[8px] border border-border px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+            className="mb-3 w-full rounded-xl border border-[#e5e5e5] bg-white/80 px-3 py-2 text-[13px] outline-none backdrop-blur-sm focus:border-[#6965db]"
           />
           <div className="flex justify-end gap-2">
             <Button onClick={() => setRenameEntry(null)}>Cancel</Button>
@@ -615,11 +620,10 @@ export function AppShell() {
         </Modal>
       )}
 
-      {/* Delete confirm */}
       {deleteEntry && (
         <Modal title="Delete file?" onClose={() => setDeleteEntry(null)}>
-          <p className="mb-3 text-[13px] text-text-muted">
-            <span className="font-mono text-text">{deleteEntry.path}</span> will be removed in a Git commit (recoverable from history).
+          <p className="mb-3 text-[13px] text-[#868686]">
+            <span className="font-mono text-[#1b1b1f]">{deleteEntry.path}</span> will be removed in a Git commit.
           </p>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setDeleteEntry(null)}>Cancel</Button>
@@ -629,7 +633,7 @@ export function AppShell() {
           </div>
         </Modal>
       )}
-      {/* Template gallery */}
+
       {galleryOpen && (
         <TemplateGallery
           onClose={() => setGalleryOpen(false)}
@@ -638,12 +642,10 @@ export function AppShell() {
         />
       )}
 
-      {/* Settings */}
       {settingsOpen && (
         <SettingsPanel onClose={() => setSettingsOpen(false)} />
       )}
 
-      {/* AI Chat */}
       <AiChatPopup
         open={aiChatOpen}
         onClose={() => setAiChatOpen(false)}

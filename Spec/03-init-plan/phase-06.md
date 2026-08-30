@@ -1,7 +1,10 @@
-# Phase 06 — AI Chat Interface (Text/Markdown → Excalidraw Diagram)
+# Phase 06 — AI Chat Interface (Markdown → Excalidraw Diagram)
+
+> **Research verified:** Aug 2026, from Excalidraw source (`packages/excalidraw/data/transform.ts` v0.18.1), Groq API reference, Mistral API reference, and community projects (Agents365/excalidraw-skill, coleam00/excalidraw-diagram-skill).
 
 ## Overview
-Add an AI chat interface that converts natural language descriptions, markdown content, or structured text into Excalidraw diagrams in real-time. The interface appears as a centered popup overlay (like ChatGPT's input box), lets users choose between free AI models (Groq or Mistral), and renders the generated diagram directly onto the canvas.
+
+Add an AI chat interface that converts natural language descriptions, markdown content, or structured text into Excalidraw diagrams in real-time. The interface appears as a centered popup overlay (ChatGPT input box pattern), lets users choose between free AI models (Groq or Mistral), and renders the generated diagram directly onto the canvas via the Skeleton API.
 
 ---
 
@@ -26,7 +29,7 @@ No way to generate diagrams from text. Users must manually draw everything. An A
 
 #### 1.C Input Area — Auto-Enlarging Textarea
 - A `<textarea>` that auto-resizes from 1 line up to **5-6 visible lines** based on content height.
-- Implementation: use a hidden `<div>` to measure text height, or use `scrollHeight` approach.
+- Implementation: use `scrollHeight` approach — set `height: auto`, then `height: Math.min(scrollHeight, maxPx)` where `maxPx = 6 * lineHeight`.
 - **Placeholder**: "Describe your diagram, paste markdown, or explain a concept..."
 - **Font**: `text-[14px]`, `font-sans`, `leading-relaxed`.
 - When content exceeds 6 lines, the textarea becomes **scrollable** (overflow-y auto).
@@ -34,12 +37,12 @@ No way to generate diagrams from text. Users must manually draw everything. An A
 - The textarea starts at 1 line and grows as the user types.
 
 #### 1.D Model Selector
-- A segmented toggle or dropdown **above or below** the textarea.
+- A segmented toggle **below** the textarea.
 - Two options:
-  - **Groq** (Llama 3.3 70B) — fast, free, 30 RPM / 1,000 RPD
-  - **Mistral** (Mistral Small 3.2) — high quality, free, 1 RPS
+  - **Groq** (GPT-OSS 120B) — fast, free, 30 RPM / 1K RPD
+  - **Mistral** (Mistral Small 4) — high quality, free, ~1 RPS
 - Default: **Groq** (faster inference, better for real-time).
-- Persisted to localStorage (user's last choice).
+- Persisted to localStorage (`exgit_ai_provider`).
 - Display model name and a subtle "(free)" badge.
 
 #### 1.E Settings Button
@@ -62,13 +65,14 @@ No way to generate diagrams from text. Users must manually draw everything. An A
 
 #### 1.H Rendering Pipeline
 When the AI responds with Excalidraw JSON:
-1. Parse the JSON response (extract JSON from markdown code fences if wrapped).
-2. Validate the JSON structure (must have `type: "excalidraw"`, `elements` array).
-3. Use `convertToExcalidrawElements()` from `@excalidraw/excalidraw` to normalize the elements (handles IDs, seeds, versions).
-4. Push the elements to the live canvas via `excalidrawAPI.updateScene({ elements })`.
-5. Merge with existing elements (append mode) or replace (replace mode — toggle in settings).
-6. Show a toast: "Diagram generated: N elements added to canvas".
-7. Close the chat popup automatically (or keep open if user prefers — add a checkbox).
+1. Extract JSON from markdown code fences (````json ... ````) or raw JSON.
+2. Validate the JSON structure (must be an array of elements or object with `elements` array).
+3. Validate each element has `type`, `x`, `y`, `id`.
+4. Use `convertToExcalidrawElements()` from `@excalidraw/excalidraw` to normalize elements (handles IDs, seeds, versions, arrow bindings, container bindings, text sizing).
+5. Push the elements to the live canvas via `excalidrawAPI.updateScene({ elements })`.
+6. Merge with existing elements (append mode) or replace (replace mode — toggle in settings).
+7. Show a toast: "Diagram generated: N elements added to canvas".
+8. Close the chat popup automatically (or keep open if user prefers — add a checkbox).
 
 ---
 
@@ -77,17 +81,20 @@ When the AI responds with Excalidraw JSON:
 ### 2.A Groq API (Primary — Recommended)
 
 **Endpoint**: `https://api.groq.com/openai/v1/chat/completions`
-**Auth**: Bearer token (API key)
+**Auth**: `Authorization: Bearer <GROQ_API_KEY>`
 **Format**: OpenAI-compatible
 
-**Free Tier Limits (2026)**:
-| Model | RPM | RPD | TPM | TPD |
-|-------|-----|-----|-----|-----|
-| `llama-3.3-70b-versatile` | 30 | 1,000 | 12,000 | 100,000 |
-| `llama-3.1-8b-instant` | 30 | 14,400 | 6,000 | 500,000 |
-| `meta-llama/llama-4-scout-17b-16e-instruct` | 30 | 1,000 | 30,000 | 500,000 |
+**Free Tier Limits (Aug 2026):**
+| Model | RPM | RPD | TPM | TPD | Context | Max Output |
+|-------|-----|-----|-----|-----|---------|------------|
+| `openai/gpt-oss-120b` | 30 | 1,000 | 8,000 | 200,000 | 131,072 | 65,536 |
+| `openai/gpt-oss-20b` | 30 | 1,000 | 8,000 | 200,000 | 131,072 | 65,536 |
+| `qwen/qwen3.6-27b` | 30 | 1,000 | 8,000 | 200,000 | 131,072 | 16,384 |
+| `qwen/qwen3.8-27b` | 30 | 1,000 | 8,000 | 2,000,000 | 131,042 | 16,384 |
 
-**Recommended model**: `llama-3.3-70b-versatile` — best quality for JSON generation, 12K TPM is sufficient for diagrams.
+**Recommended model**: `openai/gpt-oss-120b` — best quality for JSON generation on the free tier.
+
+**Key deprecation**: Use `max_completion_tokens` (not `max_tokens`).
 
 **API Call**:
 ```ts
@@ -98,35 +105,67 @@ const response = await fetch("https://api.groq.com/openai/v1/chat/completions", 
     "Authorization": `Bearer ${apiKey}`,
   },
   body: JSON.stringify({
-    model: "llama-3.3-70b-versatile",
+    model: "openai/gpt-oss-120b",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userInput },
     ],
-    temperature: 0.3,  // Low temperature for deterministic JSON output
-    max_tokens: 8192,  // Diagrams can be large
-    stream: true,      // Enable streaming for real-time rendering
+    temperature: 0.3,
+    max_completion_tokens: 8192,
+    stream: true,
   }),
 });
 ```
 
-**Streaming**: Use SSE (Server-Sent Events) to stream the response. Parse `data: [DONE]` and `data: {...}` chunks. Accumulate the response, and when complete, parse the JSON.
+**Streaming**: Use SSE (Server-Sent Events). Chunks arrive as:
+```
+data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
+data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+data: [DONE]
+```
 
 **Error Handling**:
-- 429: Show "Rate limit exceeded. Try again in X seconds." (read `x-ratelimit-reset-tokens` header).
+- 429: Show "Rate limit exceeded. Try again in X seconds." (read `retry-after` header).
 - 401: Show "Invalid API key. Check your Groq API key in Settings."
 - Network errors: Show "Connection failed. Check your internet."
+
+**Rate limit headers**:
+| Header | Meaning |
+|--------|---------|
+| `retry-after` | Seconds (only on 429) |
+| `x-ratelimit-limit-requests` | RPD |
+| `x-ratelimit-remaining-requests` | RPD remaining |
+| `x-ratelimit-limit-tokens` | TPM |
+| `x-ratelimit-remaining-tokens` | TPM remaining |
 
 ### 2.B Mistral API (Secondary — Fallback)
 
 **Endpoint**: `https://api.mistral.ai/v1/chat/completions`
-**Auth**: Bearer token (API key)
+**Auth**: `Authorization: Bearer <MISTRAL_API_KEY>`
 **Format**: OpenAI-compatible
 
-**Free Tier Limits (2026)**:
-- Rate limit: 1 request per second per API key
-- All models available on free tier (rate-limited)
-- Recommended model: `mistral-small-latest` (cheapest, fastest)
+**Free Tier Limits (Aug 2026):**
+- Cost: $0 (no credit card, phone verification only)
+- Monthly cap: ~1 billion tokens
+- Rate limit: ~1 req/sec per API key
+- **All models available** on free tier (including Mistral Large, Codestral)
+- Models may use inputs for training by default — opt out in console
+
+**Available models (current, not deprecated):**
+| Model ID | Description | Context |
+|----------|-------------|---------|
+| `mistral-small-4-0-26-03` (Small 4) | Hybrid instruct/reasoning/coding | 128K |
+| `ministral-3-8b-25-12` | Efficient text+vision | 128K |
+| `ministral-3-3b-25-12` | Tiny, efficient | 128K |
+| `ministral-3-14b-25-12` | Best-in-class text+vision | 128K |
+| `mistral-large-3-25-12` | Flagship 675B params | 256K |
+| `mistral-medium-3-5-26-04` | Frontier-class, agentic | 256K |
+
+**Recommended**: `mistral-small-4-0-26-03` (Smallest, fastest, cheapest).
+
+**Deprecated models (DO NOT USE):**
+- `mistral-small-2506` (retiring Jul 31, 2026 — replaced by Small 4)
+- `mistral-small-latest` (alias, may resolve to deprecated version)
 
 **API Call** (same OpenAI-compatible format as Groq):
 ```ts
@@ -134,10 +173,10 @@ const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${apiKey}`,
+    Authorization: `Bearer ${apiKey}`,
   },
   body: JSON.stringify({
-    model: "mistral-small-latest",
+    model: "mistral-small-4-0-26-03",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userInput },
@@ -148,6 +187,8 @@ const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
   }),
 });
 ```
+
+**Error format**: `{ "message": "...", "request_id": "...", "code": 400 }`
 
 ### 2.C API Key Management
 - API keys are stored in `localStorage` (not sent to any server — client-side only).
@@ -168,200 +209,228 @@ const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
 
 ---
 
-## 3. System Prompt (Excalidraw JSON Generation)
+## 3. System Prompt (Excalidraw Skeleton JSON Generation)
 
-### 3.A System Prompt Content
+### 3.A System Prompt Design
 
-The system prompt is the critical component that ensures high-accuracy Excalidraw JSON generation. It must teach the AI the exact Excalidraw element structure, available types, and layout best practices.
+The system prompt is the critical component that ensures high-accuracy Excalidraw JSON generation. It teaches the AI the exact **Skeleton format** (not raw full-element JSON), which is dramatically easier to generate correctly.
+
+**Why Skeleton format, not raw full-element JSON?**
+- Full JSON requires ~30+ fields per element (`versionNonce`, `seed`, `roundness`, `index`, etc.)
+- Arrows need correct `points` arrays, `startBinding`/`endBinding` with `focus`, `gap`, `elementId`
+- Text containers need linked `containerId` + matching `boundElements` on parent
+- The Skeleton API handles all of this automatically via `convertToExcalidrawElements()`
+
+**Skeleton API confirmed behavior** (from `packages/excalidraw/data/transform.ts`):
+- `label` on containers auto-creates bound text elements
+- `start`/`end` on arrows auto-creates and binds to target elements
+- IDs are auto-generated (set `regenerateIds: true` to avoid collisions)
+- Dimensions auto-computed from text content when `width`/`height` omitted
+- Arrow `points` auto-computed from bindings — never set manually
+- `boundElements` arrays auto-synced between arrows and containers
+
+### 3.B System Prompt Content
 
 ```
-You are an Excalidraw diagram generator. Your ONLY output is valid Excalidraw JSON.
-You convert natural language descriptions, markdown content, or structured text into
-beautiful, well-laid-out Excalidraw diagrams.
+You are an Excalidraw diagram generator. Your ONLY output is valid Excalidraw JSON in the SKELETON format.
 
 ## OUTPUT FORMAT
-You MUST output a complete .excalidraw JSON object. No explanation, no markdown fences,
-just raw JSON. The JSON must have this exact structure:
+Output a JSON array of element skeletons. Each element is a simplified object.
+The app will convert these to full Excalidraw elements automatically.
 
-{
-  "type": "excalidraw",
-  "version": 2,
-  "source": "https://excalidraw.com",
-  "elements": [ ... ],
-  "appState": {
-    "viewBackgroundColor": "#ffffff",
-    "gridSize": 20
-  },
-  "files": {}
-}
+Wrap your output in a JSON code fence: ```json ... ```
 
-## ELEMENT TYPES
+## ELEMENT SKELETON FORMAT
 
 ### Rectangle (boxes, containers)
 {
   "type": "rectangle",
-  "id": "unique_id",
+  "id": "rect_01",
   "x": 100, "y": 100,
   "width": 180, "height": 80,
-  "angle": 0,
   "strokeColor": "#1e1e1e",
   "backgroundColor": "#a5d8ff",
   "fillStyle": "solid",
   "strokeWidth": 2,
-  "strokeStyle": "solid",
   "roughness": 1,
-  "opacity": 100,
-  "groupIds": [],
-  "frameId": null,
-  "roundness": { "type": 3 },
-  "seed": 1234567890,
-  "version": 1,
-  "versionNonce": 1234567890,
-  "isDeleted": false,
-  "boundElements": [],
-  "updated": 1700000000000,
-  "link": null,
-  "locked": false
+  "label": { "text": "Hello World" }
 }
 
 ### Ellipse (circles, ovals)
 {
   "type": "ellipse",
-  "id": "unique_id",
+  "id": "ell_01",
   "x": 100, "y": 100,
   "width": 120, "height": 80,
-  "roundness": { "type": 2 },
-  ...same base properties as rectangle...
+  "strokeColor": "#1e1e1e",
+  "backgroundColor": "#b2f2bb",
+  "label": { "text": "Start" }
 }
 
 ### Diamond (decisions)
 {
   "type": "diamond",
-  "id": "unique_id",
+  "id": "dia_01",
   "x": 100, "y": 100,
-  "width": 120, "height": 100,
-  ...same base properties...
+  "width": 140, "height": 100,
+  "strokeColor": "#1e1e1e",
+  "backgroundColor": "#ffec99",
+  "label": { "text": "Decision?" }
 }
 
-### Text (labels, descriptions)
+### Text (free-standing labels)
 {
   "type": "text",
-  "id": "unique_id",
+  "id": "txt_01",
   "x": 100, "y": 100,
-  "width": 100, "height": 25,
-  "text": "Hello World",
-  "fontSize": 20,
-  "fontFamily": 5,
-  "textAlign": "center",
-  "verticalAlign": "middle",
-  "containerId": null,  // null for free text, or element ID for bound text
-  "originalText": "Hello World",
-  "autoResize": true,
-  "lineHeight": 1.25,
-  ...same base properties...
+  "text": "Title",
+  "fontSize": 28,
+  "strokeColor": "#1e1e1e"
 }
 
 ### Arrow (connections)
 {
   "type": "arrow",
-  "id": "unique_id",
+  "id": "arr_01",
   "x": 280, "y": 140,
-  "width": 100, "height": 0,
-  "points": [[0, 0], [100, 0]],
-  "lastCommittedPoint": null,
-  "startBinding": { "elementId": "source_id", "focus": 0, "gap": 1 },
-  "endBinding": { "elementId": "target_id", "focus": 0, "gap": 1 },
-  "startArrowhead": null,
+  "points": [[0, 0], [120, 0]],
+  "strokeColor": "#1e1e1e",
+  "strokeWidth": 2,
+  "start": { "id": "rect_01" },
+  "end": { "id": "rect_02" },
   "endArrowhead": "arrow",
-  "elbowed": false,
-  ...same base properties...
+  "label": { "text": "data flow" }
 }
 
-### Line (connectors without arrows)
-Same as arrow but with `"type": "line"` and no arrowheads.
+### Line (connector without arrow)
+Same as arrow but with "type": "line" and no arrowheads.
 
-## BOUND TEXT (Text Inside Shapes)
-To put text inside a rectangle/ellipse/diamond:
-1. Create the shape with `boundElements: [{ "id": "text_id", "type": "text" }]`
-2. Create a text element with `containerId: "shape_id"`
-3. The text will auto-center inside the shape.
+## BINDING RULES
+
+### Text inside shapes
+Use the `label` property on the shape. The text auto-centers inside.
+{
+  "type": "rectangle",
+  "id": "rect_01",
+  "x": 100, "y": 100,
+  "width": 200, "height": 80,
+  "label": { "text": "Process" }
+}
+
+### Connecting arrows
+Use `start` and `end` with `{ "id": "element_id" }`. The arrow auto-binds.
+{
+  "type": "arrow",
+  "id": "arr_01",
+  "x": 200, "y": 300,
+  "points": [[0, 0], [100, 0]],
+  "start": { "id": "rect_01" },
+  "end": { "id": "rect_02" },
+  "endArrowhead": "arrow"
+}
+
+### Creating new elements inline
+Arrows can create and bind to new elements in one step:
+{
+  "type": "arrow",
+  "id": "arr_01",
+  "x": 200, "y": 300,
+  "start": { "id": "rect_01" },
+  "end": {
+    "type": "rectangle",
+    "id": "rect_02",
+    "x": 400, "y": 100,
+    "width": 180, "height": 70,
+    "label": { "text": "Output" }
+  },
+  "endArrowhead": "arrow"
+}
 
 ## LAYOUT RULES
-1. **Grid spacing**: Use 60px gaps between elements horizontally, 80px vertically.
-2. **Element sizes**: Rectangles 160-200px wide, 60-80px tall. Text 16-20px font.
-3. **Colors**: Use a consistent palette. Prefer light fills (#a5d8ff blue, #b2f2bb green, #ffec99 yellow, #ffc9c9 red) with dark strokes (#1e1e1e).
-4. **Arrows**: Always bind arrows to source and target elements. Use `focus: 0` for centered binding.
-5. **IDs**: Generate unique short strings (8-12 chars). Use descriptive prefixes: "rect_", "text_", "arrow_".
-6. **Seeds**: Random integers (1000000000 - 9999999999) for hand-drawn variation.
-7. **Timestamps**: Use current epoch milliseconds for `updated` field.
+1. Spacing: 60px horizontal gap, 80px vertical gap between elements.
+2. Sizing: Rectangles 160-200px wide, 60-80px tall. Font 16-20px.
+3. Colors: Light fills with dark strokes. Blue (#a5d8ff) for processes, green (#b2f2bb) for starts, red (#ffc9c9) for ends, yellow (#ffec99) for decisions.
+4. Flow: Left-to-right or top-to-bottom. Be visually balanced.
+5. IDs: Unique short strings (8-12 chars, e.g. "rect_01", "text_a").
+6. Arrow points are auto-computed — just provide approximate coordinates.
 
-## DIAGRAM PATTERNS
-
-### Flowchart
-- Start/End: ellipse with light green/red fill
-- Process: rectangle with light blue fill
-- Decision: diamond with light yellow fill
-- Arrows connect shapes left-to-right or top-to-bottom
-
-### Mind Map
-- Central node: large rectangle or ellipse
-- Branches: arrows radiating outward
-- Sub-nodes: smaller rectangles
-- Use groupIds to group related branches
-
-### System Architecture
-- Components: rectangles with labels
-- Data flow: arrows with labels
-- External systems: dashed border rectangles
-- Databases: cylinder shape (rectangle + ellipse)
-
-### Sequence Diagram
-- Participants: rectangles at top
-- Lifelines: vertical dashed lines
-- Messages: horizontal arrows between lifelines
-- Time flows downward
-
-## IMPORTANT RULES
-- Output ONLY the JSON object. No explanation text, no markdown code fences.
-- Every element MUST have all required properties listed above.
+## IMPORTANT
+- Output ONLY the JSON code fence with the elements array. No explanation text.
+- Every element MUST have type, x, y, and id.
 - IDs must be unique across all elements.
-- Arrows MUST have startBinding and endBinding pointing to valid element IDs.
-- Text inside shapes MUST use containerId and the shape MUST have matching boundElements.
-- The diagram should be visually balanced with adequate spacing.
-- Prefer left-to-right or top-to-bottom flow.
-- Use color semantically: blue for processes, green for starts, red for errors/ends, yellow for decisions.
+- Arrows MUST reference valid element IDs in start/end.
+- The diagram should be well-laid-out and visually clear.
+
+## EXAMPLE INPUT
+"Create a flowchart for user login: User enters credentials, system validates, if valid show dashboard, if invalid show error."
+
+## EXAMPLE OUTPUT
+```json
+[
+  { "type": "rectangle", "id": "rect_01", "x": 50, "y": 100, "width": 180, "height": 70, "strokeColor": "#1e1e1e", "backgroundColor": "#a5d8ff", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Enter Credentials" } },
+  { "type": "arrow", "id": "arr_01", "x": 230, "y": 135, "points": [[0, 0], [60, 0]], "strokeColor": "#1e1e1e", "strokeWidth": 2, "start": { "id": "rect_01" }, "end": { "id": "rect_02" }, "endArrowhead": "arrow" },
+  { "type": "rectangle", "id": "rect_02", "x": 290, "y": 100, "width": 180, "height": 70, "strokeColor": "#1e1e1e", "backgroundColor": "#a5d8ff", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Validate" } },
+  { "type": "arrow", "id": "arr_02", "x": 380, "y": 170, "points": [[0, 0], [0, 60]], "strokeColor": "#1e1e1e", "strokeWidth": 2, "start": { "id": "rect_02" }, "end": { "id": "dia_01" }, "endArrowhead": "arrow" },
+  { "type": "diamond", "id": "dia_01", "x": 310, "y": 230, "width": 140, "height": 100, "strokeColor": "#1e1e1e", "backgroundColor": "#ffec99", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Valid?" } },
+  { "type": "arrow", "id": "arr_03", "x": 380, "y": 330, "points": [[0, 0], [-150, 70]], "strokeColor": "#1e1e1e", "strokeWidth": 2, "start": { "id": "dia_01" }, "end": { "id": "rect_03" }, "endArrowhead": "arrow" },
+  { "type": "arrow", "id": "arr_04", "x": 450, "y": 280, "points": [[0, 0], [130, 0]], "strokeColor": "#1e1e1e", "strokeWidth": 2, "start": { "id": "dia_01" }, "end": { "id": "rect_04" }, "endArrowhead": "arrow" },
+  { "type": "rectangle", "id": "rect_03", "x": 130, "y": 350, "width": 180, "height": 70, "strokeColor": "#1e1e1e", "backgroundColor": "#ffc9c9", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Show Error" } },
+  { "type": "rectangle", "id": "rect_04", "x": 530, "y": 250, "width": 180, "height": 70, "strokeColor": "#1e1e1e", "backgroundColor": "#b2f2bb", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Dashboard" } }
+]
 ```
 
-### 3.B Why This System Prompt Works
+### 3.C Why This System Prompt Works
 
-1. **Exact JSON structure**: The prompt specifies every property the AI needs, preventing missing fields.
+1. **Skeleton format**: Dramatically simpler than full-element JSON. No `seed`, `versionNonce`, `boundElements`, etc.
 2. **Copy-paste templates**: The AI can copy the element templates and fill in values.
 3. **Layout rules**: Explicit spacing, sizing, and color rules prevent messy layouts.
-4. **Bound text pattern**: The most common source of broken diagrams is incorrect text binding. The prompt explicitly explains the two-step process.
-5. **Arrow binding**: Explains how to connect arrows to shapes with proper `startBinding`/`endBinding`.
-6. **Output format**: Forces raw JSON output (no markdown fences), making parsing reliable.
+4. **Bound text pattern**: `label: { text: "..." }` on containers auto-creates bound text — the most common failure point in raw JSON.
+5. **Arrow binding**: `start: { id }` / `end: { id }` auto-creates bidirectional bindings — the second most common failure point.
+6. **Output format**: JSON code fences (not raw JSON) — more reliable extraction via regex.
 7. **Low temperature (0.3)**: Ensures deterministic, structured output rather than creative variation.
+8. **Verified**: Based on actual `packages/excalidraw/data/transform.ts` source code (810 lines).
 
-### 3.C Validation Layer (Client-Side)
+### 3.D Validation Layer (Client-Side)
 
 Even with a good system prompt, the AI may produce invalid JSON. Add a validation layer:
 
 ```ts
-function validateExcalidrawJSON(data: unknown): data is Scene {
-  if (!data || typeof data !== "object") return false;
-  const obj = data as Record<string, unknown>;
-  if (obj.type !== "excalidraw") return false;
-  if (!Array.isArray(obj.elements)) return false;
-  if (obj.elements.length === 0) return false;
+function validateExcalidrawJSON(elements: unknown[]): string[] {
+  const errors: string[] = [];
+  const ids = new Set<string>();
 
-  for (const el of obj.elements) {
-    if (!el || typeof el !== "object") return false;
-    const e = el as Record<string, unknown>;
-    if (!["rectangle", "ellipse", "diamond", "text", "arrow", "line", "freedraw"].includes(e.type as string)) return false;
-    if (typeof e.x !== "number" || typeof e.y !== "number") return false;
-    if (typeof e.id !== "string" || !e.id) return false;
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i] as Record<string, unknown>;
+    // Required fields
+    if (!el.id || !el.type || el.x == null || el.y == null) {
+      errors.push(`Element ${i}: missing required fields (id, type, x, y)`);
+      continue;
+    }
+    // Unique IDs
+    if (ids.has(el.id as string)) {
+      errors.push(`Element ${el.id}: duplicate ID`);
+    }
+    ids.add(el.id as string);
+
+    // Type-specific validation
+    const validTypes = ["rectangle", "ellipse", "diamond", "text", "arrow", "line"];
+    if (!validTypes.includes(el.type as string)) {
+      errors.push(`Element ${el.id}: invalid type "${el.type}"`);
+    }
+
+    // Arrow bindings
+    if (el.type === "arrow") {
+      const start = el.start as { id?: string } | undefined;
+      const end = el.end as { id?: string } | undefined;
+      if (start?.id && !ids.has(start.id)) {
+        errors.push(`Arrow ${el.id}: start binding references missing id "${start.id}"`);
+      }
+      if (end?.id && !ids.has(end.id)) {
+        errors.push(`Arrow ${el.id}: end binding references missing id "${end.id}"`);
+      }
+    }
   }
-  return true;
+  return errors;
 }
 ```
 
@@ -388,76 +457,95 @@ For the best UX, stream the AI response and progressively render:
 ```ts
 // After AI response is parsed and validated:
 import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
-function applyToCanvas(scene: Scene, api: ExcalidrawImperativeAPI, mode: "append" | "replace") {
-  const elements = convertToExcalidrawElements(scene.elements as ExcalidrawElementSkeleton[], {
-    regenerateIds: true,  // Ensure no ID collisions
+function applyToCanvas(
+  elements: unknown[],
+  api: ExcalidrawImperativeAPI,
+  mode: "append" | "replace"
+) {
+  const excalidrawElements = convertToExcalidrawElements(elements, {
+    regenerateIds: true,  // Ensure no ID collisions with existing elements
   });
 
   if (mode === "replace") {
-    api.updateScene({ elements });
+    api.updateScene({ elements: excalidrawElements });
   } else {
     // Append: offset new elements to the right of existing content
-    const existing = api.getSceneElements() ?? [];
-    const offset = calculateOffset(existing);  // Find rightmost edge + 60px gap
-    const offsetElements = elements.map(el => ({
+    const existing = api.getSceneElements();
+    const maxX = existing.reduce((max, el) => Math.max(max, el.x + el.width), 0);
+    const offset = maxX + 60;
+    const offsetElements = excalidrawElements.map(el => ({
       ...el,
-      x: el.x + offset.x,
-      y: el.y + offset.y,
+      x: el.x + offset,
     }));
     api.updateScene({ elements: [...existing, ...offsetElements] });
   }
 }
 ```
 
-### 4.C `convertToExcalidrawElements` Usage
+### 4.C `convertToExcalidrawElements` Verified Behavior
 
-This API from `@excalidraw/excalidraw` (v0.18.1) converts simplified element skeletons into full Excalidraw elements with proper IDs, seeds, versions, and dimensions. It handles:
-- Auto-generating `id`, `seed`, `version`, `versionNonce`, `updated`
-- Computing `width` and `height` for text elements
-- Setting up `boundElements` for container relationships
-- Normalizing arrow bindings
+This API from `@excalidraw/excalidraw` (v0.18.1) converts simplified element skeletons into full Excalidraw elements:
 
 ```ts
 import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw";
 
 const skeletons: ExcalidrawElementSkeleton[] = [
-  { type: "rectangle", x: 100, y: 100, width: 200, height: 80, label: { text: "Hello" } },
-  { type: "arrow", x: 300, y: 140, end: { type: "rectangle", x: 400, y: 100, width: 200, height: 80, label: { text: "World" } } },
+  {
+    type: "rectangle",
+    x: 100, y: 100,
+    width: 200, height: 80,
+    label: { text: "Hello" },
+  },
+  {
+    type: "arrow",
+    x: 300, y: 140,
+    start: { id: "auto-generated-rect-id" },
+    end: {
+      type: "rectangle",
+      x: 500, y: 100,
+      width: 200, height: 80,
+      label: { text: "World" },
+    },
+  },
 ];
 
 const elements = convertToExcalidrawElements(skeletons, { regenerateIds: true });
 // elements is now a full ExcalidrawElement[] array ready for updateScene
 ```
 
-**Note**: The Skeleton API uses a simplified format where:
-- `label` on a container auto-creates bound text
-- `start`/`end` on arrows auto-create and bind to target elements
-- IDs are auto-generated if not provided
-- Dimensions are computed from text content
-
-This means the AI can output the **simplified skeleton format** instead of full element JSON, which is much easier to generate correctly. The system prompt should offer both options and prefer the skeleton format for reliability.
+**What it handles automatically:**
+- Auto-generates `id`, `seed`, `version`, `versionNonce`, `updated`, `index`
+- Computes `width` and `height` for text elements from content
+- Sets up `boundElements` for container relationships
+- Normalizes arrow bindings (`startBinding`/`endBinding` with `FixedPointBinding`)
+- Creates bound text elements from `label` properties
+- Normalizes arrow `points` from bindings
 
 ---
 
 ## 5. Files to Create/Modify
 
 ### New Files
+- `lib/ai-prompts.ts` — System prompt constant (verified Skeleton API format)
+- `lib/ai-providers.ts` — API abstraction (Groq + Mistral clients with SSE streaming)
 - `components/ai-chat/AiChatPopup.tsx` — Main chat popup component
 - `components/ai-chat/ChatMessage.tsx` — Individual message bubble
 - `components/ai-chat/ModelSelector.tsx` — Groq/Mistral toggle
 - `components/ai-chat/SystemPromptViewer.tsx` — Read-only system prompt display
 - `components/ai-chat/useAiStream.ts` — Custom hook for streaming API calls
 - `components/ai-chat/validateScene.ts` — JSON validation utilities
-- `lib/ai-providers.ts` — API abstraction (Groq + Mistral clients)
-- `lib/ai-prompts.ts` — System prompt constant
 
 ### Modified Files
-- `components/topbar/TopBar.tsx` — Add AI button
+- `components/topbar/TopBar.tsx` — Add AI button (Sparkle icon)
 - `components/AppShell.tsx` — Add chat state, pass excalidrawRef to chat
-- `lib/store.ts` — Add `aiProvider`, `groqApiKey`, `mistralApiKey` to persisted state
-- `package.json` — No new dependencies needed (all already installed)
+
+### No New Dependencies
+All needed packages are already installed:
+- `react-markdown` + `remark-gfm` — for rendering AI responses as markdown
+- `@excalidraw/excalidraw` — for `convertToExcalidrawElements` and `ExcalidrawImperativeAPI`
 
 ---
 
@@ -471,7 +559,7 @@ This means the AI can output the **simplified skeleton format** instead of full 
 - [ ] API key input in settings (with links to provider consoles).
 - [ ] Response streams in real-time (SSE parsing).
 - [ ] Generated JSON is validated before rendering.
-- [ ] Valid JSON is rendered to the live canvas via `updateScene`.
+- [ ] Valid JSON is rendered to the live canvas via `updateScene(convertToExcalidrawElements(...))`.
 - [ ] Append mode adds elements to the right of existing content.
 - [ ] Replace mode clears and replaces all elements.
 - [ ] Loading state shows during generation; "Stop" button aborts fetch.
@@ -483,10 +571,30 @@ This means the AI can output the **simplified skeleton format** instead of full 
 
 ---
 
-## 7. Out of Scope (Follow-Up)
+## 7. Research Sources (Verified)
+
+| Source | What Was Verified | Date |
+|--------|-------------------|------|
+| `packages/excalidraw/data/transform.d.ts` | Skeleton type, `convertToExcalidrawElements` signature | Aug 2026 |
+| `packages/excalidraw/element/types.d.ts` | All element types, arrow bindings, container bindings | Aug 2026 |
+| `packages/excalidraw/index.d.ts` | Exported API (`convertToExcalidrawElements`, `ExcalidrawElementSkeleton`) | Aug 2026 |
+| `npmjs.com/package/@excalidraw/excalidraw` | Version 0.18.1 confirmed | Aug 2026 |
+| `console.groq.com/docs/api-reference` | API endpoint, request/response format, SSE streaming | Aug 2026 |
+| `console.groq.com/docs/rate-limits` | Free tier limits — llama-3.3-70b is enterprise only, free models: gpt-oss, qwen | Aug 2026 |
+| `console.groq.com/docs/supported-models` | Free tier model list with RPM/RPD/TPM/TPD | Aug 2026 |
+| `docs.mistral.ai/api/` | API endpoint, `max_tokens`, request format | Aug 2026 |
+| `docs.mistral.ai/getting-started/models/` | Correct model IDs: `mistral-small-4-0-26-03`, deprecated models | Aug 2026 |
+| Agents365/excalidraw-skill | System prompt engineering, 8-color palette | Aug 2026 |
+| coleam00/excalidraw-diagram-skill | JSON schema reference, element templates | Aug 2026 |
+
+---
+
+## 8. Out of Scope (Follow-Up)
 - Server-side API key proxy (production security).
 - Image generation from diagrams.
 - Multi-turn conversation with context.
 - Undo/redo for AI-generated diagrams.
 - Template suggestions based on content analysis.
 - Voice input for diagram descriptions.
+- Progressive rendering (render elements as they stream in).
+- Mermaid syntax support via `parseMermaidToExcalidraw()`.

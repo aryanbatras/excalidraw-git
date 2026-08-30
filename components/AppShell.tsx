@@ -19,6 +19,7 @@ import { TemplateGallery } from "@/components/templates/TemplateGallery";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { FileViewer } from "@/components/viewer/FileViewer";
 import { classifyFile } from "@/lib/fileTypes";
+import { AiChatPopup } from "@/components/ai-chat/AiChatPopup";
 
 // Editor must never load on the server (Excalidraw touches window at import).
 const EditorPane = dynamic(
@@ -50,8 +51,10 @@ export function AppShell() {
   const saveRef = useRef<(() => void) | null>(null);
   // Live Excalidraw imperative API — needed to push template-append changes onto the canvas.
   const excalidrawRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const onApiReady = useCallback((api: ExcalidrawImperativeAPI | null) => {
     excalidrawRef.current = api;
+    setExcalidrawApi(api);
   }, []);
   const registerSave = useCallback((fn: (() => void) | null) => {
     saveRef.current = fn;
@@ -68,6 +71,7 @@ export function AppShell() {
   const [deleting, setDeleting] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
 
   // Left sidebar: pinned open by default; can be collapsed to a thin rail that
   // expands on hover ("5% of screen → full width").
@@ -453,6 +457,7 @@ export function AppShell() {
         onSettings={() => setSettingsOpen(true)}
         onChangeRepo={() => clearRepo()}
         onRestore={restoreVersion}
+        onAi={() => setAiChatOpen(true)}
       />
       <div className="flex min-h-0 flex-1">
         <aside
@@ -637,6 +642,13 @@ export function AppShell() {
       {settingsOpen && (
         <SettingsPanel onClose={() => setSettingsOpen(false)} />
       )}
+
+      {/* AI Chat */}
+      <AiChatPopup
+        open={aiChatOpen}
+        onClose={() => setAiChatOpen(false)}
+        excalidrawApi={excalidrawApi}
+      />
     </div>
   );
 }

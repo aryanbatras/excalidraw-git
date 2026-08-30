@@ -12,6 +12,7 @@ import {
   ClockCounterClockwise,
   Gear,
   Keyboard,
+  Sparkle,
 } from "@phosphor-icons/react";
 import type { RepoRef } from "@/lib/types";
 import { useStore } from "@/lib/store";
@@ -47,6 +48,7 @@ export function TopBar({
   onSettings,
   onChangeRepo,
   onRestore,
+  onAi,
 }: {
   repo: RepoRef;
   selectedPath: string | null;
@@ -57,6 +59,7 @@ export function TopBar({
   onSettings: () => void;
   onChangeRepo: () => void;
   onRestore: (sha: string) => void;
+  onAi: () => void;
 }) {
   const status = useStore((s) => s.status);
   const statusMsg = useStore((s) => s.statusMsg);
@@ -167,6 +170,11 @@ export function TopBar({
         {/* Templates gallery */}
         <Button variant="quiet" onClick={onTemplates}>
           Templates
+        </Button>
+
+        {/* AI diagram generator */}
+        <Button variant="quiet" onClick={onAi}>
+          <Sparkle size={15} weight="fill" /> AI
         </Button>
 
         {/* History / restore */}

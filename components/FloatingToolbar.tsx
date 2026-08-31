@@ -66,7 +66,6 @@ export function FloatingToolbar({
 }: Props) {
   const status = useStore((s) => s.status);
   const statusMsg = useStore((s) => s.statusMsg);
-  const dirty = useStore((s) => s.dirty);
   const [newOpen, setNewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -76,7 +75,6 @@ export function FloatingToolbar({
   const historyRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
 
-  const isDirty = selectedPath ? !!dirty[selectedPath] : false;
   const displayPath = switchingTo || selectedPath;
   const rawName = displayPath ? displayPath.split("/").pop() : null;
   const fileName = rawName ? rawName.replace(/\.excalidraw$/i, "") : null;
@@ -122,10 +120,10 @@ export function FloatingToolbar({
   return (
     <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2">
       {/* Status pill */}
-      {(status === "saving" || status === "error" || (isDirty && status !== "saved")) && (
+      {(status === "saving" || status === "error") && (
         <div className="mb-2.5 flex justify-center">
           <div className="rounded-full bg-white/90 px-3.5 py-1.5 text-[12px] text-[#868686] shadow-sm backdrop-blur-sm">
-            {status === "saving" ? "Saving..." : status === "error" ? statusMsg ?? "Error" : "Unsaved"}
+            {status === "saving" ? "Saving..." : statusMsg ?? "Error"}
           </div>
         </div>
       )}
@@ -150,9 +148,6 @@ export function FloatingToolbar({
               <span className="max-w-[160px] truncate text-[13px] font-medium text-[#1b1b1f]">
                 {fileName}
               </span>
-              {isDirty && status !== "saving" && (
-                <span className="h-2 w-2 rounded-full bg-amber-400" />
-              )}
               {switchingTo && (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e5] border-t-[#6965db]" />
               )}
@@ -256,20 +251,25 @@ export function FloatingToolbar({
         </DockBtn>
 
         {/* Save */}
-        <div className="relative">
-          <DockBtn
-            onClick={onSave}
-            disabled={!selectedPath}
-            title={hasUnsavedChanges ? "Push to GitHub" : "Save (Cmd+S)"}
-            active={isDirty}
-            accent={hasUnsavedChanges}
-          >
-            <FloppyDisk size={18} />
-          </DockBtn>
-          {hasUnsavedChanges && (
-            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#6965db] animate-pulse" />
+        <button
+          onClick={onSave}
+          disabled={!selectedPath || status === "saving"}
+          title={selectedPath ? "Save (Cmd+S) to GitHub" : "Open a file to save"}
+          className={`flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium transition-all ${
+            status === "saving"
+              ? "cursor-wait bg-black/[0.04] text-[#868686]"
+              : hasUnsavedChanges
+                ? "bg-[#6965db] text-white shadow-sm hover:bg-[#5a56c9]"
+                : "text-[#868686] hover:bg-black/[0.04] hover:text-[#1b1b1f]"
+          } disabled:opacity-40`}
+        >
+          {status === "saving" ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#e5e5e5] border-t-[#6965db]" />
+          ) : (
+            <FloppyDisk size={16} />
           )}
-        </div>
+          <span>{status === "saving" ? "Saving" : hasUnsavedChanges ? "Save" : "Saved"}</span>
+        </button>
 
         <DockSep />
 
@@ -322,7 +322,7 @@ function DockBtn({
       onClick={onClick}
       title={title}
       disabled={disabled}
-      className={`grid h-9 w-9 place-items-center rounded-xl transition-all ${
+      className={`grid h-9 w-9 cursor-pointer place-items-center rounded-xl transition-all ${
         active
           ? "bg-[#6965db]/10 text-[#6965db]"
           : accent

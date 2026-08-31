@@ -11,6 +11,7 @@ import { FloatingToolbar } from "@/components/FloatingToolbar";
 import { Modal, Button } from "@/components/ui";
 import type { Scene, TreeEntry } from "@/lib/types";
 import type { TemplateId } from "@/lib/templates";
+import { GithubLogo } from "@phosphor-icons/react";
 import type { GalleryTemplate } from "@/lib/templates/gallery";
 import { sceneToBase64 } from "@/lib/excalidraw-serialize";
 import { loadScene, saveScene, clearScene } from "@/lib/idb";
@@ -20,6 +21,7 @@ import { FileViewer } from "@/components/viewer/FileViewer";
 import { classifyFile } from "@/lib/fileTypes";
 import { AiChatPopup } from "@/components/ai-chat/AiChatPopup";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { withRepoLock, repoKey } from "@/lib/commit-lock";
 
 // Editor must never load on the server (Excalidraw touches window at import).
 const EditorPane = dynamic(
@@ -43,7 +45,6 @@ export function AppShell() {
   const dirty = useStore((s) => s.dirty);
 
   const [current, setCurrent] = useState<{ path: string; scene: Scene; sha: string } | null>(null);
-  const [recovered, setRecovered] = useState<{ path: string; remote: Scene } | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   // Section 3: Instant file-switch feedback — track which file we're switching to
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
@@ -98,14 +99,16 @@ export function AppShell() {
         try {
           const controller = new AbortController();
           const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
-          const res = await fetch(`/api/commit?${qs}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              files: [{ path, content: sceneToBase64(cached.scene) }],
-              message: `auto-save: ${path}`,
-            }),
-            signal: controller.signal,
+          const res = await withRepoLock(repoKey(repo.owner, repo.repo), async () => {
+            return fetch(`/api/commit?${qs}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                files: [{ path, content: sceneToBase64(cached.scene) }],
+                message: `auto-save: ${path}`,
+              }),
+              signal: controller.signal,
+            });
           });
           if (res.ok) {
             const { commitSha } = await res.json() as { commitSha: string };
@@ -143,7 +146,6 @@ export function AppShell() {
       // For the same path the editor does NOT remount, so keep the current API.
       if (useStore.getState().selectedPath !== path) excalidrawRef.current = null;
       setSelectedPath(path);
-      setRecovered(null);
       try {
         // In-session switch: store cache already holds local edits → instant.
         const cached = getCachedLocal(path);
@@ -173,12 +175,13 @@ export function AppShell() {
         if (seq !== loadSeq.current) return; // a newer open superseded this one
         const key = `${repo.owner}/${repo.repo}/${path}`;
         // Boot recovery: prefer a divergent IndexedDB mirror (unsaved local work).
+        // The local version is always kept — reverting to a remote snapshot remains
+        // possible via Git history, so no "reload from GitHub" UI is needed.
         const idbRec = await loadScene(key);
-        let sceneToUse = data.scene;
-        if (idbRec?.scene && JSON.stringify(idbRec.scene) !== JSON.stringify(data.scene)) {
-          sceneToUse = idbRec.scene;
-          setRecovered({ path, remote: data.scene });
-        }
+        const sceneToUse =
+          idbRec?.scene && JSON.stringify(idbRec.scene) !== JSON.stringify(data.scene)
+            ? idbRec.scene
+            : data.scene;
         if (seq !== loadSeq.current) return;
         setCurrent({ path, scene: sceneToUse, sha: data.sha });
         setSwitchingTo(null);
@@ -436,9 +439,8 @@ export function AppShell() {
     }
   }
 
-  // hasUnsavedChanges: true when auto-save is off and any file is dirty
+  // hasUnsavedChanges: true when any file is dirty (regardless of auto-save mode)
   const hasUnsavedChanges = useMemo(() => Object.values(dirty).some(Boolean), [dirty]);
-  const showUnsavedIndicator = !autoSaveEnabled && hasUnsavedChanges;
 
   if (!repo) return <RepoPicker />;
 
@@ -449,30 +451,6 @@ export function AppShell() {
     <div className="relative h-screen w-screen overflow-hidden bg-white">
       {/* ── Canvas (fullscreen) ── */}
       <div className="absolute inset-0 z-0">
-        {recovered && current && recovered.path === current.path && (
-          <div className="absolute left-1/2 top-16 z-50 -translate-x-1/2 rounded-xl border border-white/60 bg-white/90 px-4 py-2.5 text-[13px] shadow-[0_4px_32px_rgba(0,0,0,0.12)] backdrop-blur-xl">
-            <span className="mr-3 text-[#1b1b1f]">Unsaved changes recovered.</span>
-            <button
-              onClick={() => setRecovered(null)}
-              className="mr-2 rounded-lg px-2 py-0.5 text-[#868686] transition hover:bg-black/5"
-            >
-              Keep local
-            </button>
-            <button
-              onClick={() => {
-                const remote = recovered.remote;
-                setCurrent({ path: recovered.path, scene: remote, sha: current!.sha });
-                cacheScene(recovered.path, remote, current!.sha);
-                void saveScene(`${repo!.owner}/${repo!.repo}/${recovered.path}`, remote, current!.sha);
-                setRecovered(null);
-              }}
-              className="rounded-lg bg-[#6965db] px-2.5 py-0.5 text-white transition hover:bg-[#5a56c9]"
-            >
-              Reload from GitHub
-            </button>
-          </div>
-        )}
-
         {switchingTo && (
           <div className="absolute inset-0 z-40 grid place-items-center bg-white/60 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/90 px-6 py-4 shadow-[0_4px_32px_rgba(0,0,0,0.08)] backdrop-blur-xl">
@@ -538,7 +516,7 @@ export function AppShell() {
         onChangeRepo={() => clearRepo()}
         onRestore={restoreVersion}
         onAi={() => setAiChatOpen(true)}
-        hasUnsavedChanges={showUnsavedIndicator}
+        hasUnsavedChanges={hasUnsavedChanges}
       />
 
       {/* ── Sidebar overlay (glass panel, slides from left) ── */}
@@ -554,8 +532,21 @@ export function AppShell() {
               <span className="text-[13px] font-semibold text-[#1b1b1f]">
                 Explorer
               </span>
-              <span className="text-[12px] text-[#868686]">
-                {repo.owner}/{repo.repo}
+              <span className="group/repo flex items-center gap-1">
+                <a
+                  href={`https://github.com/${repo.owner}/${repo.repo}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open ${repo.owner}/${repo.repo} on GitHub`}
+                  className="flex items-center gap-1 text-[12px] text-[#868686] hover:text-[#1b1b1f]"
+                >
+                  {repo.owner}/{repo.repo}
+                  <GithubLogo
+                    size={13}
+                    weight="fill"
+                    className="hidden text-[#868686] group-hover/repo:block"
+                  />
+                </a>
               </span>
             </div>
             <FileTree

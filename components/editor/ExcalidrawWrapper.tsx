@@ -134,35 +134,33 @@ export function ExcalidrawStage({
   );
 
   return (
-    <Excalidraw
-      key={path}
-      initialData={initialData as never}
-      excalidrawAPI={handleAPI}
-      onChange={handleChange}
-      theme="light"
-      renderTopRightUI={
-        onToggleSidebar
-          ? () => (
-              <button
-                onClick={onToggleSidebar}
-                className="h-9 w-9 rounded-lg bg-white/90 p-1.5 text-[#868686] shadow-sm backdrop-blur-sm transition hover:bg-white hover:text-[#1b1b1f]"
-                title="Toggle file explorer"
-              >
-                <FolderOpen size={18} />
-              </button>
-            )
-          : undefined
-      }
-      UIOptions={{
-        canvasActions: {
-          saveToActiveFile: false,
-          loadScene: false,
-          toggleTheme: false,
-          export: { saveFileToDisk: true },
-          changeViewBackgroundColor: true,
-          clearCanvas: true,
-        },
-      }}
-    />
+    <div className="relative h-full w-full">
+      {onToggleSidebar && (
+        <button
+          onClick={onToggleSidebar}
+          className="absolute left-4 top-16 z-10 flex h-9 w-9 items-center justify-center rounded-lg bg-white/90 text-text-muted cursor-pointer transition hover:bg-white hover:text-[#1b1b1f]"
+          title="Toggle file explorer"
+        >
+          <FolderOpen size={18} />
+        </button>
+      )}
+      <Excalidraw
+        key={path}
+        initialData={initialData as never}
+        excalidrawAPI={handleAPI}
+        onChange={handleChange}
+        theme="light"
+        UIOptions={{
+          canvasActions: {
+            saveToActiveFile: false,
+            loadScene: false,
+            toggleTheme: false,
+            export: { saveFileToDisk: true },
+            changeViewBackgroundColor: true,
+            clearCanvas: true,
+          },
+        }}
+      />
+    </div>
   );
 }

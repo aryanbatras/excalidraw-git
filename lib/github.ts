@@ -306,14 +306,24 @@ export async function commitFiles(
     return commit.data.sha;
   }
 
-  // Retry once on a stale base (someone pushed concurrently).
+  // Retry on a stale base (someone pushed concurrently). Each retry re-reads
+  // the current branch head so the new commit fast-forwards cleanly.
+  const MAX_RETRIES = 5;
   let baseSha = await getBaseSha(octokit, repo);
-  try {
-    return { commitSha: await attempt(baseSha) };
-  } catch {
-    baseSha = await getBaseSha(octokit, repo);
-    return { commitSha: await attempt(baseSha) };
+  let lastError: unknown;
+  for (let i = 0; i <= MAX_RETRIES; i++) {
+    try {
+      return { commitSha: await attempt(baseSha) };
+    } catch (e) {
+      lastError = e;
+      // Only retry when the ref couldn't be fast-forwarded (concurrent push).
+      // Anything else is a real error we should surface immediately.
+      const status = (e as { status?: number })?.status;
+      if (status !== 422 && status !== 409) throw e;
+      baseSha = await getBaseSha(octokit, repo);
+    }
   }
+  throw lastError;
 }
 
 // delete (one file)

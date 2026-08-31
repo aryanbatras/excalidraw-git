@@ -9,6 +9,7 @@ import {
   PencilSimple,
   Trash,
   Plus,
+  GithubLogo,
 } from "@phosphor-icons/react";
 import type { RepoRef, TreeEntry } from "@/lib/types";
 import { useStore } from "@/lib/store";
@@ -64,6 +65,14 @@ const FileIcon = memo(function FileIcon({ name, isExcalidraw }: { name: string; 
     </span>
   );
 });
+
+function githubUrl(repo: RepoRef, entry: TreeEntry): string {
+  const base = `https://github.com/${repo.owner}/${repo.repo}`;
+  if (entry.type === "dir") {
+    return entry.path ? `${base}/tree/${repo.branch}/${entry.path}` : base;
+  }
+  return `${base}/blob/${repo.branch}/${entry.path || entry.name}`;
+}
 
 export const TreeNode = memo(function TreeNode({
   entry,
@@ -173,6 +182,16 @@ export const TreeNode = memo(function TreeNode({
           </>
         )}
         <span className="flex-1 truncate leading-tight">{entry.name}</span>
+        <a
+          href={githubUrl(repo, entry)}
+          target="_blank"
+          rel="noreferrer"
+          title={isDir ? `Open ${entry.path || entry.name} on GitHub` : `Open ${entry.name} on GitHub`}
+          onClick={(e) => e.stopPropagation()}
+          className="hidden shrink-0 text-[#868686] hover:text-[#1b1b1f] group-hover:block"
+        >
+          <GithubLogo size={13} weight="fill" />
+        </a>
         {isDirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" title="Unsaved changes" />}
         {isDir && (
           <button

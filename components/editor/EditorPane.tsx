@@ -7,6 +7,7 @@ import { ExcalidrawStage } from "./ExcalidrawWrapper";
 import { useStore } from "@/lib/store";
 import { saveScene } from "@/lib/idb";
 import { sceneToBase64 } from "@/lib/excalidraw-serialize";
+import { withRepoLock, repoKey } from "@/lib/commit-lock";
 import type { RepoRef, Scene } from "@/lib/types";
 
 export function EditorPane({
@@ -74,47 +75,32 @@ export function EditorPane({
     const scene = latest.current.scene ?? getCached(path)?.scene;
     if (!scene) return;
 
-    // Conflict check: abort if the branch head moved since we loaded the file.
-    try {
-      const headRes = await fetch(
-        `/api/head?owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`,
-      );
-      if (headRes.ok) {
-        const { sha: headSha } = (await headRes.json()) as { sha: string };
-        const baseHead = useStore.getState().headSha[`${repo.owner}/${repo.repo}`];
-        if (headSha && baseHead && headSha !== baseHead) {
-          setStatus("error", "Remote changed — reload the file to continue");
-          return;
-        }
-      }
-    } catch {
-      // head check is best-effort; proceed if it fails
-    }
-
-    const b64 = sceneToBase64(scene);
-    setStatus("saving");
-    try {
+    await withRepoLock(repoKey(repo.owner, repo.repo), async () => {
+      const b64 = sceneToBase64(scene);
+      setStatus("saving");
       const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
-      const res = await fetch(`/api/commit?${qs}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: [{ path, content: b64 }], message: `update ${path}` }),
-      });
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || `commit failed (${res.status})`);
+      try {
+        const res = await fetch(`/api/commit?${qs}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ files: [{ path, content: b64 }], message: `update ${path}` }),
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          throw new Error(t || `commit failed (${res.status})`);
+        }
+        const data = (await res.json()) as { commitSha: string };
+        latest.current = { scene, sha: data.commitSha };
+        pendingEdit.current = false;
+        cacheScene(path, scene, data.commitSha);
+        void saveScene(`${repo.owner}/${repo.repo}/${path}`, scene, data.commitSha);
+        markDirty(path, false);
+        setHead(`${repo.owner}/${repo.repo}`, data.commitSha);
+        setStatus("saved", "All changes saved");
+      } catch (e) {
+        setStatus("error", (e as Error).message);
       }
-      const data = (await res.json()) as { commitSha: string };
-      latest.current = { scene, sha: data.commitSha };
-      pendingEdit.current = false;
-      cacheScene(path, scene, data.commitSha);
-      void saveScene(`${repo.owner}/${repo.repo}/${path}`, scene, data.commitSha);
-      markDirty(path, false);
-      setHead(`${repo.owner}/${repo.repo}`, data.commitSha);
-      setStatus("saved", "All changes saved");
-    } catch (e) {
-      setStatus("error", (e as Error).message);
-    }
+    });
   }, [repo, path, getCached, cacheScene, markDirty, setStatus, setHead]);
 
   useEffect(() => {

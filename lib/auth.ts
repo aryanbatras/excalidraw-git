@@ -30,7 +30,13 @@ export const authConfig = {
     },
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
-      const isLoginPage = nextUrl.pathname === "/login";
+      const { pathname } = nextUrl;
+      const isLoginPage = pathname === "/login";
+      const isShareRoute = pathname.startsWith("/share/");
+
+      // Share routes are public — no login required.
+      if (isShareRoute) return true;
+
       if (!isLoggedIn && !isLoginPage) {
         return Response.redirect(new URL("/login", nextUrl));
       }

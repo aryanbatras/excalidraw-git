@@ -23,7 +23,7 @@ export function EditorPane({
   path: string;
   initialScene: Scene;
   initialSha: string;
-  registerSave: (fn: (() => void) | null) => void;
+  registerSave: (fn: (() => void | Promise<void>) | null) => void;
   onApiReady?: (api: ExcalidrawImperativeAPI | null) => void;
   onToggleSidebar?: () => void;
 }) {
@@ -104,7 +104,7 @@ export function EditorPane({
   }, [repo, path, getCached, cacheScene, markDirty, setStatus, setHead]);
 
   useEffect(() => {
-    registerSave(() => void saveCurrent());
+    registerSave(() => saveCurrent());
     return () => registerSave(null);
   }, [registerSave, saveCurrent]);
 

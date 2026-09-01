@@ -10,6 +10,15 @@ const noopStorage = {
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+// Where the currently-selected document came from. A "repo" source is a normal
+// owned file (save commits to the current repo at `selectedPath`). A "share"
+// source is an un-owned document opened from a shared link — editing is allowed
+// locally, but saving must ask which repo/file to save to (never overwrite the
+// origin repo blindly).
+export type CurrentSource =
+  | { kind: "repo" }
+  | { kind: "share"; originOwner: string; originRepo: string };
+
 type State = {
   repo: RepoRef | null;
   dirCache: Record<string, TreeEntry[]>;
@@ -20,6 +29,7 @@ type State = {
   login: string | null;
   status: SaveStatus;
   statusMsg: string | null;
+  source: CurrentSource;
 
   // in-memory scene cache (path -> {scene, sha})
   sceneCache: Record<string, { scene: Scene; sha: string }>;
@@ -44,6 +54,7 @@ type State = {
   setAutoSave: (enabled: boolean) => void;
   setAutoSaveInterval: (seconds: number) => void;
   toggleLibrary: (id: string) => void;
+  setSource: (source: CurrentSource) => void;
 };
 
 export const useStore = create<State>()(
@@ -58,13 +69,14 @@ export const useStore = create<State>()(
       login: null,
       status: "idle",
       statusMsg: null,
+      source: { kind: "repo" },
       sceneCache: {},
       autoSaveEnabled: false,
       autoSaveIntervalSeconds: 60,
       enabledLibraries: ["software-logos", "aws-architecture", "devops-icons", "uml-er", "network-topology", "aws-serverless"],
 
-      setRepo: (r) => set({ repo: r, dirCache: {}, loadedDirs: {}, selectedPath: null, dirty: {} }),
-      clearRepo: () => set({ repo: null, dirCache: {}, loadedDirs: {}, selectedPath: null, dirty: {} }),
+      setRepo: (r) => set({ repo: r, dirCache: {}, loadedDirs: {}, selectedPath: null, dirty: {}, source: { kind: "repo" } }),
+      clearRepo: () => set({ repo: null, dirCache: {}, loadedDirs: {}, selectedPath: null, dirty: {}, source: { kind: "repo" } }),
       setDir: (path, entries) =>
         set((s) => ({ dirCache: { ...s.dirCache, [path]: entries }, loadedDirs: { ...s.loadedDirs, [path]: true } })),
       markLoaded: (path) => set((s) => ({ loadedDirs: { ...s.loadedDirs, [path]: true } })),
@@ -92,6 +104,7 @@ export const useStore = create<State>()(
             ? s.enabledLibraries.filter((x) => x !== id)
             : [...s.enabledLibraries, id],
         })),
+      setSource: (source) => set({ source }),
     }),
     {
       name: "exgit-store",

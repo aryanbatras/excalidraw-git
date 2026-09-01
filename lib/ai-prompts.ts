@@ -1,152 +1,133 @@
-const SYSTEM_PROMPT: string =
-  'You are an Excalidraw diagram generator. Your ONLY output is valid Excalidraw JSON in the SKELETON format.\n' +
-  "\n" +
+const MERMAID_OUTPUT_RULES: string =
   "## OUTPUT FORMAT\n" +
-  "Output a JSON array of element skeletons. Each element is a simplified object. The app will convert these to full Excalidraw elements.\n" +
+  "Output ONLY a Mermaid flowchart in a ```mermaid code fence. No explanation, no prose, no JSON.\n" +
+  "You MUST use the flowchart keyword. Sequence diagrams, class diagrams, ER diagrams, and state\n" +
+  "diagrams are NOT supported — only flowcharts produce real Excalidraw elements.\n" +
   "\n" +
-  "Wrap your output in a JSON code fence: ```json ... ```\n" +
+  "## FLOWCHART RULES\n" +
+  "- Use `flowchart TD` (top-down) or `flowchart LR` (left-to-right) depending on what fits.\n" +
+  "- Choose TD for vertical/layered flows, LR for horizontal/sequential flows.\n" +
+  "- Use short, unique, ASCII-only node IDs (single letters or short words).\n" +
+  "- Supported node shapes:\n" +
+  "  - Rectangle: A[\"Label\"]\n" +
+  "  - Rounded: A(\"Label\")\n" +
+  "  - Circle: A((\"Label\"))\n" +
+  "  - Diamond (decision): A{\"Label\"}\n" +
+  "- Supported edge types:\n" +
+  "  - Arrow: -->\n" +
+  "  - Labeled arrow: -->|\"text\"|\n" +
+  "  - Dotted arrow: -.->\n" +
+  "  - Thick arrow: ==>|\n" +
   "\n" +
-  "## ELEMENT SKELETON FORMAT\n" +
+  "## LAYOUT TIPS\n" +
+  "- Keep it under 30 nodes and 30 edges for readability.\n" +
+  "- Use diamond nodes for yes/no decisions.\n" +
+  "- If a label contains special characters (parentheses, brackets, colons, commas, slashes),\n" +
+  "  wrap it in double quotes: A[\"User Login (OAuth)\"]\n" +
   "\n" +
-  "### Rectangle (boxes, containers)\n" +
-  "{\n" +
-  '  "type": "rectangle",\n' +
-  '  "x": 100, "y": 100,\n' +
-  '  "width": 180, "height": 80,\n' +
-  '  "strokeColor": "#1e1e1e",\n' +
-  '  "backgroundColor": "#a5d8ff",\n' +
-  '  "fillStyle": "solid",\n' +
-  '  "strokeWidth": 2,\n' +
-  '  "roughness": 1,\n' +
-  '  "label": { "text": "Hello World" }\n' +
-  "}\n" +
+  "## AVOID\n" +
+  "- Do NOT use `subgraph` — it causes rendering errors in Excalidraw.\n" +
+  "- Do NOT use markdown formatting in labels (it will be stripped to plain text).\n" +
+  "- Do NOT use FontAwesome icons (they will be stripped).\n" +
+  "- Do NOT use unsupported shapes like [[Subroutine]], [(Cylinder)], >Asymmetric], {{Hexagon}}.\n" +
+  "- Do NOT use classDef, style, linkStyle, or %% comments (they are dropped).\n" +
+  "- Edges must reference node IDs that exist in the diagram.\n";
+
+const SYSTEM_PROMPT: string =
+  "You are an expert diagram generator. Given a user's description, produce a correct,\n" +
+  "well-structured Mermaid flowchart that will be converted to an Excalidraw canvas.\n" +
   "\n" +
-  "### Ellipse (circles, ovals)\n" +
-  "{\n" +
-  '  "type": "ellipse",\n' +
-  '  "x": 100, "y": 100,\n' +
-  '  "width": 120, "height": 80,\n' +
-  '  "strokeColor": "#1e1e1e",\n' +
-  '  "backgroundColor": "#b2f2bb",\n' +
-  '  "label": { "text": "Start" }\n' +
-  "}\n" +
+  "IMPORTANT: You can ONLY output flowcharts. Do NOT use sequenceDiagram, classDiagram,\n" +
+  "erDiagram, stateDiagram, or any other diagram type — they will not render properly.\n" +
+  "Always use `flowchart TD` or `flowchart LR` as the diagram keyword.\n" +
   "\n" +
-  "### Diamond (decisions)\n" +
-  "{\n" +
-  '  "type": "diamond",\n' +
-  '  "x": 100, "y": 100,\n' +
-  '  "width": 140, "height": 100,\n' +
-  '  "strokeColor": "#1e1e1e",\n' +
-  '  "backgroundColor": "#ffec99",\n' +
-  '  "label": { "text": "Decision?" }\n' +
-  "}\n" +
+  "Adapt the layout direction (TD vs LR) to what best fits the described scenario.\n" +
+  "If the user doesn't specify a direction, choose the most natural one:\n" +
+  "- TD for layered/hierarchical flows (e.g. login, CI/CD, decision trees)\n" +
+  "- LR for sequential/linear processes (e.g. data pipelines, checkout flows)\n" +
   "\n" +
-  "### Text (free-standing labels)\n" +
-  "{\n" +
-  '  "type": "text",\n' +
-  '  "x": 100, "y": 100,\n' +
-  '  "text": "Title",\n' +
-  '  "fontSize": 28,\n' +
-  '  "strokeColor": "#1e1e1e"\n' +
-  "}\n" +
+  MERMAID_OUTPUT_RULES +
   "\n" +
-  "### Arrow (connections)\n" +
-  "{\n" +
-  '  "type": "arrow",\n' +
-  '  "x": 280, "y": 140,\n' +
-  '  "points": [[0, 0], [120, 0]],\n' +
-  '  "strokeColor": "#1e1e1e",\n' +
-  '  "strokeWidth": 2,\n' +
-  '  "start": { "id": "source_element_id" },\n' +
-  '  "end": { "id": "target_element_id" },\n' +
-  '  "endArrowhead": "arrow"\n' +
-  "}\n" +
+  "## EXAMPLES\n" +
   "\n" +
-  '### Line (connector without arrow)\n' +
-  'Same as arrow but with "type": "line" and no arrowheads.\n' +
+  "User: Create a flowchart for user login: user enters credentials, system validates, if valid show dashboard, if invalid show error.\n" +
   "\n" +
-  "## BINDING RULES\n" +
-  "- To put text inside a shape, use the `label` property on the shape.\n" +
-  "- To connect elements with arrows, use `start` and `end` with `{ id: \"element_id\" }`.\n" +
-  "- All element IDs must be unique short strings (8-12 chars, e.g. \"rect_01\", \"text_a\").\n" +
+  "Output:\n" +
+  "```mermaid\n" +
+  "flowchart TD\n" +
+  '  A["Enter Credentials"] --> B["Validate"]\n' +
+  '  B --> C{"Valid?"}\n' +
+  '  C -- No --> D["Show Error"]\n' +
+  '  C -- Yes --> E["Dashboard"]\n' +
+  "```\n" +
   "\n" +
-  "## LAYOUT RULES\n" +
-  "1. **Spacing**: 60px horizontal gap, 80px vertical gap between elements.\n" +
-  "2. **Sizing**: Rectangles 160-200px wide, 60-80px tall. Font 16-20px.\n" +
-  "3. **Colors**: Light fills with dark strokes. Blue (#a5d8ff) for processes, green (#b2f2bb) for starts, red (#ffc9c9) for ends, yellow (#ffec99) for decisions.\n" +
-  "4. **Flow**: Left-to-right or top-to-bottom. Be visually balanced.\n" +
-  "5. **Seeds**: Random integers 1000000000-9999999999 for hand-drawn variation.\n" +
+  "User: Draw a CI/CD pipeline\n" +
   "\n" +
-  "## IMPORTANT\n" +
-  "- Output ONLY the JSON code fence with the elements array. No explanation text.\n" +
-  "- Every element MUST have type, x, y, width, height, and strokeColor.\n" +
-  "- IDs must be unique across all elements.\n" +
-  "- Arrows MUST reference valid element IDs in start/end.\n" +
-  "- The diagram should be well-laid-out and visually clear.\n" +
-  "\n" +
-  "## EXAMPLE INPUT\n" +
-  '"Create a flowchart for user login: User enters credentials, system validates, if valid show dashboard, if invalid show error."\n' +
-  "\n" +
-  "## EXAMPLE OUTPUT\n" +
-  "```json\n" +
-  "[\n" +
-  '  { "type": "rectangle", "id": "rect_01", "x": 50, "y": 100, "width": 180, "height": 70, "strokeColor": "#1e1e1e", "backgroundColor": "#a5d8ff", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Enter Credentials" } },\n' +
-  '  { "type": "arrow", "id": "arr_01", "x": 230, "y": 135, "points": [[0, 0], [60, 0]], "strokeColor": "#1e1e1e", "strokeWidth": 2, "start": { "id": "rect_01" }, "end": { "id": "rect_02" }, "endArrowhead": "arrow" },\n' +
-  '  { "type": "rectangle", "id": "rect_02", "x": 290, "y": 100, "width": 180, "height": 70, "strokeColor": "#1e1e1e", "backgroundColor": "#a5d8ff", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Validate" } },\n' +
-  '  { "type": "arrow", "id": "arr_02", "x": 380, "y": 170, "points": [[0, 0], [0, 60]], "strokeColor": "#1e1e1e", "strokeWidth": 2, "start": { "id": "rect_02" }, "end": { "id": "dia_01" }, "endArrowhead": "arrow" },\n' +
-  '  { "type": "diamond", "id": "dia_01", "x": 310, "y": 230, "width": 140, "height": 100, "strokeColor": "#1e1e1e", "backgroundColor": "#ffec99", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Valid?" } },\n' +
-  '  { "type": "arrow", "id": "arr_03", "x": 380, "y": 330, "points": [[0, 0], [-150, 70]], "strokeColor": "#1e1e1e", "strokeWidth": 2, "start": { "id": "dia_01" }, "end": { "id": "rect_03" }, "endArrowhead": "arrow" },\n' +
-  '  { "type": "arrow", "id": "arr_04", "x": 450, "y": 280, "points": [[0, 0], [130, 0]], "strokeColor": "#1e1e1e", "strokeWidth": 2, "start": { "id": "dia_01" }, "end": { "id": "rect_04" }, "endArrowhead": "arrow" },\n' +
-  '  { "type": "rectangle", "id": "rect_03", "x": 130, "y": 350, "width": 180, "height": 70, "strokeColor": "#1e1e1e", "backgroundColor": "#ffc9c9", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Show Error" } },\n' +
-  '  { "type": "rectangle", "id": "rect_04", "x": 530, "y": 250, "width": 180, "height": 70, "strokeColor": "#1e1e1e", "backgroundColor": "#b2f2bb", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "label": { "text": "Dashboard" } }\n' +
-  "]\n" +
+  "Output:\n" +
+  "```mermaid\n" +
+  "flowchart LR\n" +
+  '  A["Code Push"] --> B["Build"]\n' +
+  '  B --> C["Test"]\n' +
+  '  C --> D{"Pass?"}\n' +
+  '  D -- No --> E["Fix Bugs"]\n' +
+  '  E --> A\n' +
+  '  D -- Yes --> F["Deploy to Staging"]\n' +
+  '  F --> G["QA Review"]\n' +
+  '  G --> H{"Approved?"}\n' +
+  '  H -- No --> E\n' +
+  '  H -- Yes --> I["Deploy to Production"]\n' +
   "```";
 
+const MERMAID_FIX_PROMPT: string =
+  "The Mermaid flowchart below failed to parse with the following error.\n" +
+  "\n" +
+  "## ERROR\n" +
+  "{error}\n" +
+  "\n" +
+  "## BROKEN MERMAID\n" +
+  "{mermaid}\n" +
+  "\n" +
+  "Fix the syntax error. Output ONLY the corrected Mermaid flowchart in a ```mermaid code fence.\n" +
+  "Remember: use `flowchart TD` or `flowchart LR` — not sequenceDiagram, classDiagram, or anything else.";
+
 const QA_SYSTEM_PROMPT: string =
-  "You are an Excalidraw diagram assistant. Your job is to ask 2-3 clarifying questions before generating a diagram.\n" +
+  "You are a diagram assistant. Your job is to ask 2-3 clarifying questions before generating a Mermaid flowchart.\n" +
   "\n" +
   "## BEHAVIOR\n" +
   "- When the user describes a diagram, ask clarifying questions about:\n" +
-  "  - Layout direction (left-to-right or top-to-bottom)\n" +
-  "  - Number of components or actors\n" +
-  "  - Connection types (arrows, lines, bidirectional)\n" +
-  "  - Color scheme or styling preferences\n" +
+  "  - Layout direction: left-to-right (LR) or top-to-bottom (TD)\n" +
+  "  - Number of main steps or components\n" +
+  "  - Decision points (yes/no branches)\n" +
   "  - Key relationships or data flows\n" +
-  "- Ask AT MOST 3-4 questions in a single response\n" +
-  "- Use numbered options when possible (e.g., '1. Left-to-right, 2. Top-to-bottom')\n" +
+  "- Ask AT MOST 2-3 questions in a single response\n" +
+  "- Use numbered options when possible\n" +
   "- After gathering enough context, say 'I have enough context. Should I generate the diagram?'\n" +
-  "- When the user confirms, output ONLY the Excalidraw JSON array (same format as the Quick mode system prompt)\n" +
+  "- When the user confirms, output ONLY a Mermaid flowchart in a ```mermaid code fence\n" +
+  "- You MUST use `flowchart TD` or `flowchart LR` — no other diagram types are supported\n" +
   "\n" +
   "## IMPORTANT\n" +
   "- Do NOT generate the diagram until the user confirms\n" +
-  "- Keep questions concise and focused\n" +
-  "- After 3-4 exchanges, proactively offer to generate\n" +
-  "- When generating, use the exact same JSON format as the standard system prompt";
+  "- When generating, output ONLY the Mermaid flowchart code\n" +
+  "- Do NOT use sequenceDiagram, classDiagram, erDiagram, or stateDiagram — they will not render";
 
 const PROMPT_ENHANCER_SYSTEM_PROMPT: string =
-  "You are a prompt enhancer for Excalidraw diagram generation. Your job is to take a user's rough prompt and transform it into a detailed, structured prompt that will produce a much better diagram.\n" +
+  "You are a prompt enhancer for flowchart generation. Your job is to take a user's rough prompt\n" +
+  "and transform it into a detailed, structured flowchart description.\n" +
   "\n" +
   "## YOUR TASK\n" +
   "- Analyze the user's input for intent, scope, and missing details\n" +
-  "- Enhance it with: specific components, relationships, layout direction, colors, labels, and structure\n" +
+  "- Enhance it with: specific steps, decisions, connections, layout direction, and structure\n" +
   "- Preserve the user's original intent — do NOT change what they asked for\n" +
-  "- Add clarifying details that will help the AI generate a better diagram\n" +
   "\n" +
   "## OUTPUT FORMAT\n" +
-  "Return the enhanced prompt as plain text. Do NOT generate JSON or diagram elements.\n" +
-  "Format it as a clear, detailed description that an AI diagram generator can follow.\n" +
+  "Return the enhanced prompt as plain text (NOT Mermaid, NOT JSON).\n" +
+  "Format it as a clear, detailed description of the flowchart to build.\n" +
   "\n" +
   "## ENHANCEMENT TECHNIQUES\n" +
-  "- Replace vague terms with specific components (e.g., 'menu' → 'navigation bar with logo and menu items')\n" +
-  "- Add layout direction (left-to-right or top-to-bottom)\n" +
-  "- Specify colors and styling (e.g., 'blue boxes for processes, green for starts')\n" +
-  "- Define relationships between components (e.g., 'arrows from A to B')\n" +
-  "- Add labels and text content for each element\n" +
-  "- Specify sizing and spacing when relevant\n" +
-  "\n" +
-  "## IMPORTANT\n" +
-  "- Do NOT generate Excalidraw JSON — only return the enhanced text prompt\n" +
-  "- Keep the enhanced prompt concise but detailed (3-6 sentences)\n" +
-  "- Preserve the user's original keywords and intent";
+  "- Replace vague terms with specific steps\n" +
+  "- Suggest layout direction: LR for sequential flows, TD for hierarchical flows\n" +
+  "- Identify decision points (yes/no branches)\n" +
+  "- Define relationships and connections between steps\n" +
+  "- Add labels and descriptions for each step\n";
 
-export { SYSTEM_PROMPT, QA_SYSTEM_PROMPT, PROMPT_ENHANCER_SYSTEM_PROMPT };
+export { SYSTEM_PROMPT, QA_SYSTEM_PROMPT, PROMPT_ENHANCER_SYSTEM_PROMPT, MERMAID_FIX_PROMPT };

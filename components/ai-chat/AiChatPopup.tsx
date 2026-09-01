@@ -7,8 +7,13 @@ import { X, Sparkle, ArrowRight, ChatCircle, Lightning, MagicWand, Copy, Check }
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { AiProvider } from "@/lib/ai-providers";
 import { streamAiResponse, getProviderConfig } from "@/lib/ai-providers";
-import { SYSTEM_PROMPT, QA_SYSTEM_PROMPT, PROMPT_ENHANCER_SYSTEM_PROMPT } from "@/lib/ai-prompts";
-import { parseAiResponse } from "./validateScene";
+import {
+  SYSTEM_PROMPT,
+  QA_SYSTEM_PROMPT,
+  PROMPT_ENHANCER_SYSTEM_PROMPT,
+  MERMAID_FIX_PROMPT,
+} from "@/lib/ai-prompts";
+import { extractMermaid, mermaidToScene, appendSceneElements } from "@/lib/mermaid";
 import { ModelSelector } from "./ModelSelector";
 import { SystemPromptViewer } from "./SystemPromptViewer";
 
@@ -135,12 +140,36 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
     [provider],
   );
 
+  const streamOnce = useCallback(
+    async (systemPrompt: string, payload: string): Promise<string | null> => {
+      const messages = [{ role: "user" as const, content: payload }];
+      let accumulated = "";
+      const stream = streamAiResponse(provider, systemPrompt, messages);
+      for await (const chunk of stream) {
+        if (chunk.type === "chunk" && chunk.content) {
+          accumulated += chunk.content;
+        } else if (chunk.type === "error") {
+          setError(chunk.error ?? "Unknown error.");
+          return null;
+        }
+      }
+      return accumulated;
+    },
+    [provider],
+  );
+
   const generateDiagram = useCallback(
     async (finalPrompt: string, conversationHistory?: ChatMessage[]) => {
       setError(null);
       setSuccess(false);
 
       try {
+        if (!excalidrawApi) {
+          setError("Canvas not ready. Open a file first.");
+          setIsGenerating(false);
+          return;
+        }
+
         const messages = conversationHistory
           ? [...conversationHistory, { role: "user" as const, content: finalPrompt }]
           : [{ role: "user" as const, content: finalPrompt }];
@@ -157,39 +186,63 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
           }
         }
 
-        const parsed = parseAiResponse(accumulated);
-        if (!parsed.ok || !parsed.elements) {
-          setError(parsed.error ?? "Failed to parse diagram elements.");
+        let mermaid = extractMermaid(accumulated);
+        if (!mermaid) {
+          setError("The AI did not return valid Mermaid. Try again or use a simpler request.");
           setIsGenerating(false);
           return;
         }
 
-        if (!excalidrawApi) {
-          setError("Canvas not ready. Open a file first.");
+        // Convert with error-recovery loop (LLMs often emit slightly-broken Mermaid).
+        let elements;
+        let files;
+        let parseError: string | null = null;
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const result = await mermaidToScene(mermaid);
+            elements = result.elements;
+            files = result.files;
+            parseError = null;
+            break;
+          } catch (err) {
+            parseError = err instanceof Error ? err.message : "Unknown Mermaid parse error";
+            if (attempt === 2) break;
+
+            const fixPrompt = MERMAID_FIX_PROMPT
+              .replace("{error}", parseError)
+              .replace("{mermaid}", mermaid);
+            const fixed = await streamOnce(
+              "You are a Mermaid syntax fixer. Output ONLY corrected Mermaid in a code fence.",
+              fixPrompt,
+            );
+            if (!fixed) break;
+            const fixedMermaid = extractMermaid(fixed);
+            if (!fixedMermaid) break;
+            mermaid = fixedMermaid;
+          }
+        }
+
+        if (!elements || parseError) {
+          setError(
+            `Could not parse the Mermaid diagram. ${parseError ?? ""}`,
+          );
           setIsGenerating(false);
           return;
         }
-
-        const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
-        const excalidrawElements = convertToExcalidrawElements(
-          parsed.elements as Parameters<typeof convertToExcalidrawElements>[0],
-          { regenerateIds: true },
-        );
 
         const existing = excalidrawApi.getSceneElements();
-        if (existing.length > 0) {
-          const maxX = existing.reduce((max: number, el) => {
-            return Math.max(max, (el.x ?? 0) + (el.width ?? 0));
-          }, 0);
-          const offset = maxX + 60;
-          const offsetElements = excalidrawElements.map((el) => ({
-            ...el,
-            x: el.x + offset,
-          }));
-          excalidrawApi.updateScene({ elements: [...existing, ...offsetElements] });
-        } else {
-          excalidrawApi.updateScene({ elements: excalidrawElements });
+        const newScene = appendSceneElements(existing, elements);
+        excalidrawApi.updateScene({ elements: newScene });
+        if (files && Object.keys(files).length > 0) {
+          excalidrawApi.addFiles(Object.values(files));
         }
+        requestAnimationFrame(() => {
+          excalidrawApi.scrollToContent(excalidrawApi.getSceneElements(), {
+            animate: true,
+            fitToContent: true,
+          });
+        });
 
         setSuccess(true);
         setInput("");
@@ -210,7 +263,7 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
         setIsGenerating(false);
       }
     },
-    [excalidrawApi, onClose],
+    [excalidrawApi, onClose, streamOnce, provider],
   );
 
   const handleSubmit = useCallback(async () => {
@@ -262,7 +315,7 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
         }
       }
     }
-  }, [input, isGenerating, mode, chatMessages, provider, generateDiagram, streamMessage]);
+  }, [input, isGenerating, mode, chatMessages, generateDiagram, streamMessage]);
 
   const handleConfirmGenerate = useCallback(async () => {
     const contextSummary = chatMessages
@@ -367,9 +420,11 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
           ))}
         </div>
 
+        {/* Scrollable content area */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Chat messages */}
         {(mode === "chat" || (mode === "enhance" && enhancedPrompt)) && chatMessages.length > 0 && (
-          <div className="mx-6 mt-4 max-h-[350px] space-y-3 overflow-y-auto rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4">
+          <div className="mx-6 mt-4 space-y-3 rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4">
             {chatMessages.map((msg, i) => (
               <div key={i} className={`rounded-xl px-4 py-3 text-[13px] leading-relaxed ${
                 msg.role === "user"
@@ -499,6 +554,9 @@ export function AiChatPopup({ open, onClose, excalidrawApi }: Props) {
             </div>
           </div>
         )}
+
+        </div>
+        {/* End scrollable content area */}
 
         {/* Input area */}
         <div className="flex-shrink-0 border-t border-black/[0.06] px-6 py-4">

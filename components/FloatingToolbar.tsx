@@ -9,6 +9,9 @@ import {
   Sparkle,
   Gear,
   Power,
+  ShareNetwork,
+  Check,
+  Copy,
 } from "@phosphor-icons/react";
 import type { RepoRef } from "@/lib/types";
 import type { TemplateId } from "@/lib/templates";
@@ -46,6 +49,7 @@ interface Props {
   onChangeRepo: () => void;
   onRestore: (sha: string) => void;
   onAi: () => void;
+  onShare: () => Promise<{ url?: string; error?: string } | null>;
   hasUnsavedChanges?: boolean;
 }
 
@@ -62,18 +66,27 @@ export function FloatingToolbar({
   onChangeRepo,
   onRestore,
   onAi,
+  onShare,
   hasUnsavedChanges,
 }: Props) {
   const status = useStore((s) => s.status);
   const statusMsg = useStore((s) => s.statusMsg);
+  const isShareSource = useStore((s) => s.source.kind === "share");
   const [newOpen, setNewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const shareBusyRef = useRef(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [commits, setCommits] = useState<CommitRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const newRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
 
   const displayPath = switchingTo || selectedPath;
   const rawName = displayPath ? displayPath.split("/").pop() : null;
@@ -85,6 +98,12 @@ export function FloatingToolbar({
       if (newRef.current && !newRef.current.contains(t)) setNewOpen(false);
       if (historyRef.current && !historyRef.current.contains(t)) setHistoryOpen(false);
       if (accountRef.current && !accountRef.current.contains(t)) setAccountOpen(false);
+      // Keep the share popover open while a share is in progress: clicking the
+      // "Save & Share" button on the save-first modal is outside this popover,
+      // and must not dismiss it before the link is ready to show.
+      if (shareRef.current && !shareRef.current.contains(t) && !shareBusyRef.current) {
+        setShareOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -96,11 +115,44 @@ export function FloatingToolbar({
         setNewOpen(false);
         setHistoryOpen(false);
         setAccountOpen(false);
+        if (!shareBusyRef.current) setShareOpen(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  const doShare = useCallback(async () => {
+    setShareBusy(true);
+    shareBusyRef.current = true;
+    setShareError(null);
+    setShareLink(null);
+    try {
+      const result = await onShare();
+      if (!result) {
+        setShareOpen(false);
+        return;
+      }
+      if (result.error) {
+        setShareError(result.error);
+      } else if (result.url) {
+        setShareLink(result.url);
+        setShareCopied(false);
+      }
+    } finally {
+      setShareBusy(false);
+      shareBusyRef.current = false;
+    }
+  }, [onShare]);
+
+  const copyShare = useCallback(async () => {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch { /* noop */ }
+  }, [shareLink]);
 
   const fetchHistory = useCallback(async () => {
     if (!selectedPath) return;
@@ -254,7 +306,7 @@ export function FloatingToolbar({
         <button
           onClick={onSave}
           disabled={!selectedPath || status === "saving"}
-          title={selectedPath ? "Save (Cmd+S) to GitHub" : "Open a file to save"}
+          title={isShareSource ? "Save a copy of this shared diagram to a repo" : selectedPath ? "Save (Cmd+S) to GitHub" : "Open a file to save"}
           className={`flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium transition-all ${
             status === "saving"
               ? "cursor-wait bg-black/[0.04] text-[#868686]"
@@ -268,10 +320,64 @@ export function FloatingToolbar({
           ) : (
             <FloppyDisk size={16} />
           )}
-          <span>{status === "saving" ? "Saving" : hasUnsavedChanges ? "Save" : "Saved"}</span>
+          <span>{status === "saving" ? "Saving" : isShareSource ? "Save As…" : hasUnsavedChanges ? "Save" : "Saved"}</span>
         </button>
 
         <DockSep />
+
+        {/* Share */}
+        <div className="relative" ref={shareRef}>
+          <DockBtn
+            onClick={() => {
+              if (shareOpen) { setShareOpen(false); return; }
+              setShareOpen(true); setNewOpen(false); setHistoryOpen(false); setAccountOpen(false);
+              setShareError(null);
+              setShareLink(null);
+              void doShare();
+            }}
+            title="Share as read-only link"
+          >
+            <ShareNetwork size={18} />
+          </DockBtn>
+          {shareOpen && (
+            <div className="absolute left-1/2 bottom-full z-50 mb-2 w-80 -translate-x-1/2 rounded-xl border border-black/[0.06] bg-white p-4 shadow-[0_4px_32px_rgba(0,0,0,0.12)]">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#868686]">
+                Share read-only link
+              </div>
+              {shareBusy && (
+                <div className="flex items-center gap-2 py-3 text-[13px] text-[#868686]">
+                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#e5e5e5] border-t-[#6965db]" />
+                  Checking…
+                </div>
+              )}
+              {!shareBusy && shareError && (
+                <div className="rounded-lg bg-red-50 px-3 py-2.5 text-[13px] text-red-600">{shareError}</div>
+              )}
+              {!shareBusy && shareLink && (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={shareLink}
+                      onFocus={(e) => e.target.select()}
+                      className="min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-[#fafafa] px-2.5 py-2 font-mono text-[11px] text-[#1b1b1f] outline-none"
+                    />
+                    <button
+                      onClick={copyShare}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#6965db] text-white transition hover:bg-[#5a56c9]"
+                      title="Copy link"
+                    >
+                      {shareCopied ? <Check size={15} /> : <Copy size={15} />}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[12px] text-[#868686]">
+                    Anyone with this link can view the diagram (not edit it).
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Settings */}
         <DockBtn onClick={onSettings} title="Settings">

@@ -48,6 +48,19 @@ export async function getDefaultBranch(token: string, owner: string, repo: strin
   return data.default_branch;
 }
 
+// Confirm a repo's visibility (both `private` flag and `visibility` field).
+// Used by the share flow to refuse sharing private repos, and by the public
+// share-read route to reject repos that were privatized after a link was made.
+export async function getRepoVisibility(
+  token: string,
+  owner: string,
+  repo: string,
+): Promise<{ private: boolean; visibility: string | null }> {
+  const octokit = getOctokit(token);
+  const { data } = await octokit.rest.repos.get({ owner, repo });
+  return { private: data.private, visibility: data.visibility ?? null };
+}
+
 // Create a brand-new repository for the authenticated user.
 export async function createRepo(
   token: string,

@@ -43,6 +43,7 @@ export function AppShell() {
   const setStatus = useStore((s) => s.setStatus);
   const setLogin = useStore((s) => s.setLogin);
   const dirty = useStore((s) => s.dirty);
+  const setSource = useStore((s) => s.setSource);
 
   const [current, setCurrent] = useState<{ path: string; scene: Scene; sha: string } | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
@@ -50,7 +51,7 @@ export function AppShell() {
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   // Monotonic token: only the most recent openFile() request may write current state.
   const loadSeq = useRef(0);
-  const saveRef = useRef<(() => void) | null>(null);
+  const saveRef = useRef<((() => void | Promise<void>) | null)>(null);
   // Live Excalidraw imperative API — needed to push template-append changes onto the canvas.
   const excalidrawRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [excalidrawApi, setExcalidrawApi] = useState<ExcalidrawImperativeAPI | null>(null);
@@ -58,7 +59,7 @@ export function AppShell() {
     excalidrawRef.current = api;
     setExcalidrawApi(api);
   }, []);
-  const registerSave = useCallback((fn: (() => void) | null) => {
+  const registerSave = useCallback((fn: ((() => void | Promise<void>) | null)) => {
     saveRef.current = fn;
   }, []);
 
@@ -75,6 +76,28 @@ export function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
 
+  // ── Share flow ──
+  // Save-first prompt: shown before creating a share link when there are unsaved changes.
+  const [shareSavePrompt, setShareSavePrompt] = useState(false);
+  const shareSaveResolve = useRef<((proceed: boolean) => void) | null>(null);
+  const savingForShare = useRef(false);
+
+  // ── Save As flow (share-sourced / un-owned docs) ──
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [saveAsPath, setSaveAsPath] = useState("");
+  const [saveAsBusy, setSaveAsBusy] = useState(false);
+  const [saveAsError, setSaveAsError] = useState<string | null>(null);
+  type ShareRef = { owner: string; repo: string; branch: string; path: string };
+  const [pendingShare, setPendingShare] = useState<ShareRef | null>(() => {
+    if (typeof window === "undefined") return null;
+    const q = new URLSearchParams(window.location.search).get("fromShare");
+    if (!q) return null;
+    const seg = q.split("/").map(decodeURIComponent);
+    const [owner, repo, branch, ...rest] = seg;
+    if (!owner || !repo || !branch || rest.length === 0) return null;
+    return { owner, repo, branch, path: rest.join("/") };
+  });
+
   // Left sidebar overlay — slides from left edge, floats over canvas
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -83,6 +106,9 @@ export function AppShell() {
   const autoSaveInterval = useStore((s) => s.autoSaveIntervalSeconds);
   useEffect(() => {
     if (!autoSaveEnabled || !repo) return;
+    // Auto-save is paused for share-sourced (un-owned) docs: there is no repo to
+    // commit to yet, and saving must go through the explicit Save As flow.
+    if (useStore.getState().source.kind !== "repo") return;
     let cancelled = false;
     const id = setInterval(async () => {
       if (cancelled) return;
@@ -215,6 +241,7 @@ export function AppShell() {
 
   // open persisted selection on mount
   useEffect(() => {
+    if (pendingShare) return; // a shared-doc load is in progress
     if (repo && selectedPath && (!current || current.path !== selectedPath)) {
       // Intended orchestration: restore the persisted selection exactly once;
       // openFile performs async I/O and its sync prefix sets the loading state.
@@ -442,6 +469,176 @@ export function AppShell() {
   // hasUnsavedChanges: true when any file is dirty (regardless of auto-save mode)
   const hasUnsavedChanges = useMemo(() => Object.values(dirty).some(Boolean), [dirty]);
 
+  // ── Share flow ────────────────────────────────────────────────────────────
+  // Open a document received via a shared link (?fromShare=owner/repo/branch/path).
+  // The scene is fetched through the unauthenticated /api/share route and opened
+  // as an un-owned (share-sourced) document: editing is allowed locally, but
+  // saving always goes through "Save As" so the origin repo is never overwritten.
+  const openFromShare = useCallback(
+    async (ref: { owner: string; repo: string; branch: string; path: string }) => {
+      const qs = `owner=${encodeURIComponent(ref.owner)}&repo=${encodeURIComponent(ref.repo)}&branch=${encodeURIComponent(ref.branch)}&path=${encodeURIComponent(ref.path)}`;
+      const res = await fetch(`/api/share?${qs}`);
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error || `Failed (${res.status})`);
+      }
+      const { scene } = (await res.json()) as { scene: Scene };
+      const base = ref.path.split("/").pop() ?? "diagram";
+      const name = base.replace(/\.excalidraw$/i, "") || "diagram";
+      // Placeholder path under the current repo's dir; replaced by Save As.
+      const dir = selectedPath && selectedPath.includes("/")
+        ? selectedPath.slice(0, selectedPath.lastIndexOf("/"))
+        : "";
+      const localPath = `${dir ? dir + "/" : ""}${name}-copy.excalidraw`;
+      setSource({ kind: "share", originOwner: ref.owner, originRepo: ref.repo });
+      cacheScene(localPath, scene, "");
+      setCurrent({ path: localPath, scene, sha: "" });
+      setSelectedPath(localPath);
+      markDirty(localPath, true);
+      setStatus("saved", `Opened "${name}" from a shared link — save to your repo`);
+    },
+    [selectedPath, setSource, cacheScene, setSelectedPath, markDirty, setStatus],
+  );
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("fromShare");
+    if (!q) return;
+    // Clear the query param so a refresh doesn't re-trigger the share load.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("fromShare");
+    window.history.replaceState({}, "", url.toString());
+  }, []);
+
+  // Once a repo is available, if a shared doc was queued (from a visitor who
+  // had not yet picked a repo), load it into the editor.
+  useEffect(() => {
+    if (!repo || !pendingShare) return;
+    const ref = pendingShare;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void openFromShare(ref)
+      .catch((e) => setStatus("error", (e as Error).message))
+      .finally(() => {
+        if (!cancelled) setPendingShare(null);
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo]);
+
+  const confirmSaveBeforeShare = useCallback(async () => {
+    setShareSavePrompt(false);
+    if (!shareSaveResolve.current) return;
+    const resolve = shareSaveResolve.current;
+    shareSaveResolve.current = null;
+    savingForShare.current = true;
+    try {
+      await saveRef.current?.();
+    } finally {
+      savingForShare.current = false;
+    }
+    resolve(true);
+  }, []);
+
+  const cancelSaveBeforeShare = useCallback(() => {
+    setShareSavePrompt(false);
+    shareSaveResolve.current?.(false);
+    shareSaveResolve.current = null;
+  }, []);
+
+  const handleShare = useCallback(async (): Promise<{ url?: string; error?: string } | null> => {
+    if (!repo || !selectedPath) return { error: "Open a file to share it." };
+
+    if (savingForShare.current) return null;
+    if (Object.values(useStore.getState().dirty).some(Boolean)) {
+      const proceed = await new Promise<boolean>((resolve) => {
+        shareSaveResolve.current = resolve;
+        setShareSavePrompt(true);
+      });
+      if (!proceed) return null;
+    }
+
+    // Refuse to share private repos.
+    try {
+      const res = await fetch(`/api/visibility?owner=${repo.owner}&repo=${repo.repo}`);
+      const vis = (await res.json()) as { private?: boolean; error?: string };
+      if (vis?.private) {
+        return { error: "This repo is private. Make it public on GitHub to share this diagram." };
+      }
+    } catch {
+      return { error: "Could not check the repo's visibility. Try again." };
+    }
+
+    const origin = process.env.NEXT_PUBLIC_BASE_URL ?? (typeof window !== "undefined" ? window.location.origin : "");
+    const url = `${origin}/share/${repo.owner}/${repo.repo}/${repo.branch}/${selectedPath.split("/").map(encodeURIComponent).join("/")}`;
+    return { url };
+  }, [repo, selectedPath]);
+
+  // ── Save As flow (share-sourced / un-owned docs) ─────────────────────────
+  const startSaveAs = useCallback(() => {
+    const base = (current?.path ?? selectedPath ?? "diagram").split("/").pop() ?? "diagram";
+    setSaveAsPath(base.replace(/\.excalidraw$/i, ""));
+    setSaveAsError(null);
+    setSaveAsOpen(true);
+  }, [current, selectedPath]);
+
+  const confirmSaveAs = useCallback(async () => {
+    if (!repo || saveAsBusy) return;
+    const name = saveAsPath.trim().endsWith(".excalidraw") ? saveAsPath.trim() : `${saveAsPath.trim()}.excalidraw`;
+    if (!name || name === ".excalidraw") {
+      setSaveAsError("Enter a file name.");
+      return;
+    }
+    const dir = selectedPath && selectedPath.includes("/")
+      ? selectedPath.slice(0, selectedPath.lastIndexOf("/"))
+      : "";
+    const targetPath = dir ? `${dir}/${name}` : name;
+
+    const scene = current?.scene ?? useStore.getState().sceneCache[selectedPath ?? ""]?.scene;
+    if (!scene) {
+      setSaveAsError("No diagram to save.");
+      return;
+    }
+
+    setSaveAsBusy(true);
+    setSaveAsError(null);
+    try {
+      const b64 = sceneToBase64(scene);
+      const qs = `owner=${repo.owner}&repo=${repo.repo}&branch=${repo.branch}`;
+      const res = await fetch(`/api/file?${qs}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: targetPath, content: b64 }),
+      });
+      if (!res.ok) throw new Error((await res.text()) || `Failed (${res.status})`);
+      const { commitSha } = (await res.json()) as { commitSha: string };
+
+      cacheScene(targetPath, scene, commitSha);
+      setCurrent({ path: targetPath, scene, sha: commitSha });
+      setSelectedPath(targetPath);
+      markDirty(targetPath, false);
+      // The document is now owned by the current repo — resume normal saving.
+      setSource({ kind: "repo" });
+      setHead(`${repo.owner}/${repo.repo}`, commitSha);
+      setSaveAsOpen(false);
+      setStatus("saved", `Saved to ${repo.owner}/${repo.repo}/${targetPath}`);
+    } catch (e) {
+      setSaveAsError((e as Error).message);
+    } finally {
+      setSaveAsBusy(false);
+    }
+  }, [repo, saveAsBusy, saveAsPath, selectedPath, current, cacheScene, setSelectedPath, markDirty, setSource, setHead, setStatus]);
+
+  // Save action: share-sourced (un-owned) docs route through "Save As" so the
+  // user explicitly chooses the target repo/path; owned files save normally.
+  const handleSaveAction = useCallback(() => {
+    if (useStore.getState().source.kind === "share") {
+      startSaveAs();
+      return;
+    }
+    void saveRef.current?.();
+  }, [startSaveAs]);
+
+
   if (!repo) return <RepoPicker />;
 
   const selectedKind = selectedPath ? classifyFile(selectedPath) : null;
@@ -503,7 +700,7 @@ export function AppShell() {
         switchingTo={switchingTo}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        onSave={() => saveRef.current?.()}
+        onSave={handleSaveAction}
         onNew={(id) => {
           setNewName(id === "blank" ? "untitled" : id);
           const dir = selectedPath && selectedPath.includes("/")
@@ -516,6 +713,7 @@ export function AppShell() {
         onChangeRepo={() => clearRepo()}
         onRestore={restoreVersion}
         onAi={() => setAiChatOpen(true)}
+        onShare={handleShare}
         hasUnsavedChanges={hasUnsavedChanges}
       />
 
@@ -628,6 +826,48 @@ export function AppShell() {
 
       {settingsOpen && (
         <SettingsPanel onClose={() => setSettingsOpen(false)} />
+      )}
+
+      {/* Save before sharing? */}
+      {shareSavePrompt && (
+        <Modal title="Save before sharing?" onClose={cancelSaveBeforeShare}>
+          <p className="mb-4 text-[13px] leading-relaxed text-[#868686]">
+            You have unsaved changes. Save to GitHub before creating the shared link?
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button onClick={cancelSaveBeforeShare}>Cancel</Button>
+            <Button variant="primary" onClick={() => void confirmSaveBeforeShare()}>
+              Save &amp; Share
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Save As (un-owned / share-sourced document) */}
+      {saveAsOpen && (
+        <Modal title="Save to your repo" onClose={() => setSaveAsOpen(false)}>
+          <p className="mb-3 text-[13px] leading-relaxed text-[#868686]">
+            This diagram came from a shared link. Choose where to save your copy in{" "}
+            <span className="font-medium text-[#1b1b1f]">{repo ? `${repo.owner}/${repo.repo}` : "your repo"}</span>.
+          </p>
+          <label className="mb-1 block text-[12px] text-[#868686]">File name</label>
+          <input
+            autoFocus
+            value={saveAsPath}
+            onChange={(e) => setSaveAsPath(e.target.value)}
+            placeholder="my-diagram"
+            className="mb-3 w-full rounded-xl border border-[#e5e5e5] bg-white/80 px-3 py-2 text-[13px] outline-none backdrop-blur-sm focus:border-[#6965db]"
+          />
+          {saveAsError && (
+            <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-600">{saveAsError}</div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setSaveAsOpen(false)}>Cancel</Button>
+            <Button variant="primary" loading={saveAsBusy} loadingText="Saving..." onClick={() => void confirmSaveAs()}>
+              Save copy
+            </Button>
+          </div>
+        </Modal>
       )}
 
       <AiChatPopup
